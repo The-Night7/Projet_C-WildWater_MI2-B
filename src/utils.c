@@ -5,6 +5,9 @@
  * @date Novembre 2025
  */
 
+// Ajout de cette définition pour activer strdup
+#define _POSIX_C_SOURCE 200809L
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -118,7 +121,7 @@ AVLNode* avl_insert(AVLNode* root, const char* key, void* value) {
 
 void* avl_search(AVLNode* root, const char* key) {
     if (root == NULL) return NULL;
-    
+
     int cmp = strcmp(key, root->key);
     if (cmp == 0) return root->value;
     if (cmp < 0) return avl_search(root->left, key);
@@ -127,11 +130,11 @@ void* avl_search(AVLNode* root, const char* key) {
 
 void avl_destroy(AVLNode* root, void (*free_value)(void*)) {
     if (root == NULL) return;
-    
+
     // Détruire les sous-arbres
     avl_destroy(root->left, free_value);
     avl_destroy(root->right, free_value);
-    
+
     // Libérer la mémoire du nœud
     free(root->key);
     if (free_value != NULL && root->value != NULL)
@@ -156,7 +159,7 @@ int read_data_file(const char* filepath, void (*callback)(char**, int, void*), v
     while (fgets(line, sizeof(line), file)) {
         // Supprimer le caractère de nouvelle ligne
         line[strcspn(line, "\n")] = '\0';
-        
+
         // Tokeniser la ligne
         token_count = 0;
         token = strtok(line, ",");
@@ -164,7 +167,7 @@ int read_data_file(const char* filepath, void (*callback)(char**, int, void*), v
             tokens[token_count++] = token;
             token = strtok(NULL, ",");
         }
-        
+
         // Appeler la fonction de callback avec les tokens
         if (token_count > 0 && callback) {
             callback(tokens, token_count, user_data);
