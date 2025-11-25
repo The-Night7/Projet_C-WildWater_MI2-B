@@ -1,0 +1,41 @@
+# Fichiers compilés
+*.o
+*.obj
+*.exe
+*.out
+*.a
+*.so
+*.dll
+
+# Fichiers générés par le projet
+src/c-wildwater
+tests/c-wildwater
+data/vol_max.dat
+data/vol_captation.txt
+data/vol_traitement.tmp
+data/vol_all.dat
+data/leaks_history.dat
+
+# Images générées
+data/output_images/*.png
+
+# Fichiers temporaires
+*.tmp
+*.bak
+*~
+
+# Fichiers de logs
+tests/logs/*.log
+tests/logs/*.txt
+
+# Dossiers spécifiques à l'IDE
+.vscode/
+.idea/
+*.suo
+*.user
+*.sln.docstates
+.vs/
+
+# Autres
+.DS_Store
+Thumbs.db

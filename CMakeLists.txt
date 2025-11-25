@@ -19,4 +19,9 @@ add_executable(Projet_C_WildWater_MI2_B
         .gitattributes
         arborescence_prototype.txt
         README.md
-        resume_synthetique_projet.txt)
+        resume_synthetique_projet.txt
+        src/main.c
+        src/histogram.c
+        src/leaks.h
+        src/leaks.c
+        src/utils.c)
