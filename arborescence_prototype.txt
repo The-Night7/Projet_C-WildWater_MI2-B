@@ -14,7 +14,7 @@ C-WildWater/
 │   └── helpers.sh           # (Optionnel) Fonctions Shell réutilisables
 │
 ├── data/                    # Données d'entrée et de sortie
-│   ├── input.csv            # Fichier CSV fourni (données brutes)
+│   ├── input.csv            # Fichier CSV fourni (données brutes) (finalement pas un csv mais deux .dat)
 │   ├── vol_max.dat          # Résultat histogramme (capacité max)
 │   ├── vol_captation.txt    # Résultat histogramme (volume capté)
 │   ├── vol_traitement.tmp   # Résultat histogramme (volume traité)
