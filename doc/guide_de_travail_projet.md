@@ -9,8 +9,8 @@
 
 ### 1.2 Conception de l'architecture
 - [x] Définir les structures de données nécessaires:
-  - AVL pour stocker et rechercher efficacement les identifiants d'usines
-  - Arbre classique pour modéliser le réseau de distribution
+  - [x] AVL pour stocker et rechercher efficacement les identifiants d'usines
+  - [x] Arbre classique pour modéliser le réseau de distribution
 - [ ] Planifier les algorithmes pour:
   - [ ] Calcul des histogrammes (max, src, real)
   - [ ] Calcul des pertes d'eau (leaks)
