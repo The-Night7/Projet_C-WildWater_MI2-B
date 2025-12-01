@@ -3,7 +3,8 @@ project(Projet_C_WildWater_MI2_B)
 
 set(CMAKE_CXX_STANDARD 14)
 
-add_executable(Projet_C_WildWater_MI2_B
+add_executable(
+        Projet_C_WildWater_MI2_B
         .idea/.gitignore
         .idea/editor.xml
         .idea/modules.xml
@@ -21,6 +22,4 @@ add_executable(Projet_C_WildWater_MI2_B
         README.md
         resume_synthetique_projet.txt
         src/main.c
-        src/leaks.c
-        src/histogram.c
-        src/histogram.h)
+)
