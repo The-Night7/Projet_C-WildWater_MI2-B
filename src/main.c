@@ -1,87 +1,53 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "avl.h"
 
-#define FILE1_PATH "data/c-wildwater_v0.dat"
-#define FILE2_PATH "data/c-wildwater_v3.dat"
-#define OUTPUT_PATH "data/c-wildwater.csv"
+int main(int argc, char** argv) {
+    if (argc != 3) return 1;
 
-// Fonction pour analyser une ligne et écrire dans le fichier CSV
-void parse_and_write(const char *input_line, FILE *output_file)
-{
-    char factory_t[50], amont[50], aval[50], vol[50];
-    float pertes;
+    FILE* file = fopen(argv[1], "r");
+    if (!file) return 2;
 
-    // Supprimer le saut de ligne à la fin de la ligne
-    char clean_line[256];
-    strncpy(clean_line, input_line, sizeof(clean_line));
-    clean_line[strcspn(clean_line, "\n")] = '\0';
+    char* mode = argv[2];
+    Station* root = NULL;
+    char line[1024];
 
-    // Utiliser sscanf pour extraire les champs selon le format des lignes
-    int parsed = sscanf(clean_line, "%49[^;];%49[^;];%49[^;];%49[^;];%f",
-                        factory_t, amont, aval, vol, &pertes);
+    while (fgets(line, sizeof(line), file)) {
+        char *col1, *col2, *col3, *col4, *col5;
+        
+        col1 = strtok(line, ",");
+        col2 = strtok(NULL, ",");
+        col3 = strtok(NULL, ",");
+        col4 = strtok(NULL, ",");
+        col5 = strtok(NULL, ",");
 
-    // Vérifier si tous les champs ont été correctement analysés
-    if (parsed == 5) {
-        fprintf(output_file, "%s,%s,%s,%s,%.3f\n", factory_t, amont, aval, vol, pertes);
-    } else {
-        fprintf(stderr, "Erreur : Ligne mal formatée - %s\n", clean_line);
-    }
-}
+        // Suppression du warning "variable set but not used"
+        (void)col1; 
 
-int main()
-{
-    // Ouverture des fichiers en mode lecture et écriture
-    FILE *in1 = fopen(FILE1_PATH, "r");
-    if (!in1)
-    {
-        fprintf(stderr, "Erreur : Impossible d'ouvrir le fichier %s\n", FILE1_PATH);
-        return 1;
-    }
+        if (!col4) continue;
 
-    FILE *in2 = fopen(FILE2_PATH, "r");
-    if (!in2)
-    {
-        fprintf(stderr, "Erreur : Impossible d'ouvrir le fichier %s\n", FILE2_PATH);
-        fclose(in1);
-        return 1;
+        // Mode MAX
+        if (strcmp(mode, "max") == 0) {
+            if (col2 && strstr(col2, "Plant") && col3 && (strcmp(col3, "-") == 0 || strcmp(col3, " ") == 0)) {
+                root = insert_station(root, col2, atol(col4), 0, 0);
+            }
+        }
+        // Mode SRC / REAL
+        else if (col3 && strstr(col3, "Plant")) {
+            long vol = atol(col4);
+            long reel = vol;
+            if (strcmp(mode, "real") == 0 && col5) {
+                float p = atof(col5);
+                reel = (long)(vol * (1.0 - (p/100.0)));
+            }
+            root = insert_station(root, col3, 0, vol, reel);
+        }
     }
 
-    FILE *out = fopen(OUTPUT_PATH, "w");
-    if (!out)
-    {
-        fprintf(stderr, "Erreur : Impossible d'ouvrir le fichier %s\n", OUTPUT_PATH);
-        fclose(in1);
-        fclose(in2);
-        return 1;
-    }
+    fclose(file);
+    write_csv(root, stdout, mode);
+    free_tree(root);
 
-    char line[256];
-
-    // Écrire l'en-tête dans le fichier CSV
-    fprintf(out, "Usine,Amont,Aval,Volume,Taux de perte\n");
-
-    // Lecture du premier fichier et écriture dans le fichier CSV
-    while (fgets(line, sizeof(line), in1))
-    {
-        if (strlen(line) > 1) { // Ignorer les lignes vides
-        parse_and_write(line, out);
-    }
-    }
-
-    // Lecture du second fichier et écriture dans le fichier CSV
-    while (fgets(line, sizeof(line), in2))
-    {
-        if (strlen(line) > 1) { // Ignorer les lignes vides
-        parse_and_write(line, out);
-    }
-    }
-
-    // Fermeture des fichiers
-    fclose(in1);
-    fclose(in2);
-    fclose(out);
-
-    printf("Traitement terminé avec succès.\n");
     return 0;
 }
