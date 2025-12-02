@@ -9,11 +9,11 @@
 // Fonction pour analyser une ligne et écrire dans le fichier CSV
 void parse_and_write(const char *input_line, FILE *output_file)
 {
-    char factory_t[20], amont[20], aval[20], vol[20];
+    char factory_t[50], amont[50], aval[50], vol[50];
     float pertes;
 
     // Utiliser sscanf pour extraire les champs selon le format des lignes
-    int parsed = sscanf(input_line, "Plant #%19[^;];Service #%19[^;];Cust #%19[^;];%19[^;];%f",
+    int parsed = sscanf(input_line, "%s;%s;%s;%s;%f",
                         factory_t, amont, aval, vol, &pertes);
 
     // Vérifier si tous les champs ont été correctement analysés
