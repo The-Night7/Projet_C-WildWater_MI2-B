@@ -21,5 +21,5 @@ add_executable(
         arborescence_prototype.txt
         README.md
         resume_synthetique_projet.txt
-        src/main.c
+        src/make_csv.c
 )

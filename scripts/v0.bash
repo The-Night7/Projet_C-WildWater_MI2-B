@@ -13,7 +13,7 @@ if [ ! -d "bin" ]; then
 fi
 
 # Chemin du fichier CSV
-csv_file="data/c-wildwater.csv"
+csv_file="data/c-wildwater_v0.csv"
 
 if [ ! -f "$csv_file" ]; then
   # Création du fichier CSV et ajout de la première ligne
@@ -24,13 +24,13 @@ fi
 
 # Compilation et exécution du programme C
 echo "Compilation du programme C..."
-gcc -o bin/main src/make_csv.c
+gcc -o bin/main src/make_csv_v0.c
 
 if [ $? -eq 0 ]; then
   echo "Compilation réussie. Exécution du programme..."
 
   # Exécution du programme compilé
-  ./bin/main 2> tests/logs/erreurs.log
+  ./bin/main 2> tests/logs/erreurs_v0.log
 
 else
   echo "Échec de la compilation. Veuillez vérifier le code source."
