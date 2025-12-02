@@ -2,96 +2,115 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Définition d'une valeur pour les données manquantes ('-')
+#define MAX_LINE 1024
 #define MISSING_DATA -1.0f
 
-/**
- * Analyse une ligne du fichier CSV et extrait les informations demandées.
- * * @param line : La ligne brute lue depuis le fichier (ex: "Plant;Source A;Usine B;1000;0.5")
- * @param id_amont_out : Buffer pour stocker l'ID amont (colonne 2)
- * @param id_aval_out : Buffer pour stocker l'ID aval (colonne 3)
- * @param volume_out : Pointeur pour le volume (colonne 4)
- * @param fuite_out : Pointeur pour le pourcentage (colonne 5)
- * @return : 0 si succès, 1 si erreur de format.
- */
-int parse_line(char *line, char *id_amont_out, char *id_aval_out, float *volume_out, float *fuite_out) {
+// --- FONCTION DE PARSING (Celle discutée précédemment) ---
+int parse_line(char *line, char *usine_ref, char *id_amont, char *id_aval, float *vol, float *fuite) {
+    char buffer[MAX_LINE];
     char *token;
-    char buffer[1024]; // Copie de travail pour ne pas altérer la ligne originale si besoin
-    
-    // Nettoyage du saut de ligne final éventuel
-    line[strcspn(line, "\r\n")] = 0;
-    strncpy(buffer, line, 1024);
 
-    // --- Colonne 1 : Usine (Info contextuelle, souvent ignorée pour le tronçon lui-même) ---
+    // Copie pour ne pas détruire la ligne originale (utile pour l'affichage debug)
+    strncpy(buffer, line, MAX_LINE);
+    buffer[strcspn(buffer, "\r\n")] = 0; // Enlever le \n
+
+    // 1. Usine (Col 1)
     token = strtok(buffer, ";");
-    if (!token) return 1; 
+    if (!token) return 1;
+    strcpy(usine_ref, (strcmp(token, "-") == 0) ? "N/A" : token);
 
-    // --- Colonne 2 : ID Amont [cite: 61] ---
+    // 2. Amont (Col 2) [cite: 61]
     token = strtok(NULL, ";");
     if (!token) return 1;
-    strcpy(id_amont_out, token);
+    strcpy(id_amont, token);
 
-    // --- Colonne 3 : ID Aval [cite: 62] ---
+    // 3. Aval (Col 3) [cite: 62]
     token = strtok(NULL, ";");
     if (!token) return 1;
-    strcpy(id_aval_out, token);
+    strcpy(id_aval, (strcmp(token, "-") == 0) ? "N/A" : token);
 
-    // --- Colonne 4 : Volume [cite: 63] ---
+    // 4. Volume (Col 4) [cite: 63]
     token = strtok(NULL, ";");
     if (!token) return 1;
-    // Gestion du tiret '-' 
-    if (strcmp(token, "-") == 0) {
-        *volume_out = MISSING_DATA;
-    } else {
-        *volume_out = strtof(token, NULL);
-    }
+    *vol = (strcmp(token, "-") == 0) ? MISSING_DATA : strtof(token, NULL);
 
-    // --- Colonne 5 : Pourcentage de fuites [cite: 64] ---
+    // 5. Fuite (Col 5) [cite: 64]
     token = strtok(NULL, ";");
     if (!token) return 1;
-    // Gestion du tiret '-'
-    if (strcmp(token, "-") == 0) {
-        *fuite_out = MISSING_DATA;
-    } else {
-        *fuite_out = strtof(token, NULL);
-    }
+    *fuite = (strcmp(token, "-") == 0) ? MISSING_DATA : strtof(token, NULL);
 
     return 0; // Succès
 }
 
+// --- MAIN DE TEST ---
+int main() {
+    const char *filename = "mini_test.dat";
 
+    // ---------------------------------------------------------
+    // ETAPE 1 : Création d'un fichier de test (Mock Data)
+    // On reproduit les exemples du PDF pour vérifier le parsing
+    // ---------------------------------------------------------
+    printf("Creation du fichier de test '%s'...\n", filename);
+    FILE *f_create = fopen(filename, "w");
+    if (!f_create) { perror("Erreur creation"); return 1; }
 
-void charger_donnees(const char *filename) {
+    // Cas 1 : Source -> Usine (Volume présent, Pas de fuite indiquée ici) [cite: 71-73]
+    fprintf(f_create, "-;Spring #MQ001991L;Facility complex #RH400057F;20892;0.997\n");
+    
+    // Cas 2 : Définition Usine (Capacité présente, Pas d'aval) [cite: 79-82]
+    fprintf(f_create, "-;Facility complex #RH400057F;-;4749292;-\n");
+
+    // Cas 3 : Usine -> Stockage (Pas de volume, Fuite présente) [cite: 90-93]
+    fprintf(f_create, "-;Facility complex #RH400057F;Storage #13178;-;3.777\n");
+
+    // Cas 4 : Stockage -> Jonction (Usine ref en Col 1, Fuite présente) [cite: 100-103]
+    fprintf(f_create, "Facility complex #RH400057F;Storage #13178;Junction #TM12995S;-;3.308\n");
+
+    fclose(f_create);
+    printf("Fichier cree avec succes.\n\n");
+
+    // ---------------------------------------------------------
+    // ETAPE 2 : Lecture et Vérification
+    // ---------------------------------------------------------
+    printf("--- DEBUT DU TEST DE LECTURE ---\n");
+    
     FILE *file = fopen(filename, "r");
-    if (!file) {
-        perror("Erreur ouverture fichier");
-        exit(1); // Le code erreur doit être strictement positif [cite: 212]
-    }
+    if (!file) { perror("Erreur lecture"); return 1; }
 
-    char line[1024];
-    char amont[256], aval[256];
-    float vol, fuite;
+    char line[MAX_LINE];
+    char usine[50], amont[50], aval[50];
+    float volume, fuite;
+    int ligne_num = 1;
 
-    // Lecture ligne par ligne
     while (fgets(line, sizeof(line), file)) {
-        
-        // On parse la ligne
-        if (parse_line(line, amont, aval, &vol, &fuite) == 0) {
+        // Affichage de la ligne brute pour comparaison
+        printf("Ligne %d brute : %s", ligne_num, line); 
+        // Note: fgets garde le \n, donc pas besoin d'en ajouter un dans le printf
+
+        if (parse_line(line, usine, amont, aval, &volume, &fuite) == 0) {
+            printf("   -> PARSING OK :\n");
+            printf("      [Col 1] Usine Ref : %s\n", usine);
+            printf("      [Col 2] Amont     : %s\n", amont);
+            printf("      [Col 3] Aval      : %s\n", aval);
             
-            // ICI : Insérez votre logique de stockage en mémoire.
-            // Le sujet suggère d'utiliser des AVL pour les recherches rapides[cite: 207].
+            // Affichage intelligent du Volume
+            printf("      [Col 4] Volume    : ");
+            if (volume == MISSING_DATA) printf("Non defini (-)\n");
+            else printf("%.2f m3\n", volume);
+
+            // Affichage intelligent de la Fuite
+            printf("      [Col 5] Fuite     : ");
+            if (fuite == MISSING_DATA) printf("Non defini (-)\n");
+            else printf("%.3f %%\n", fuite);
             
-            /* Exemple fictif :
-            if (vol != MISSING_DATA) {
-                ajouter_dans_avl(mon_arbre, amont, vol);
-            }
-            ajouter_liaison(amont, aval, fuite);
-            */
-            
-            // Debug simple pour vérifier que ça marche
-            // printf("Tronçon: %s -> %s | Vol: %.2f | Fuite: %.2f%%\n", amont, aval, vol, fuite);
+        } else {
+            printf("   -> ERREUR de format sur cette ligne.\n");
         }
+        printf("---------------------------------------------------\n");
+        ligne_num++;
     }
 
     fclose(file);
+    printf("Fin du test v0.\n");
+    return 0;
 }
