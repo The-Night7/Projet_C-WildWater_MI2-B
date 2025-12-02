@@ -3,17 +3,17 @@
 ## 1. Analyse préliminaire et conception
 
 ### 1.1 Compréhension des données
-- [ ] Examiner la structure du fichier CSV (plus de 8 millions de lignes, 500 Mo)
-- [ ] Identifier les colonnes clés et leur signification
+- [x] Examiner la structure du fichier CSV (plus de 8 millions de lignes, 500 Mo)
+- [x] Identifier les colonnes clés et leur signification
 - [ ] Comprendre la topologie du réseau (sources → usines → stockage → distribution → usagers)
 
 ### 1.2 Conception de l'architecture
-- [ ] Définir les structures de données nécessaires:
-  - AVL pour stocker et rechercher efficacement les identifiants d'usines
-  - Arbre classique pour modéliser le réseau de distribution
+- [x] Définir les structures de données nécessaires:
+  - [x] AVL pour stocker et rechercher efficacement les identifiants d'usines
+  - [x] Arbre classique pour modéliser le réseau de distribution
 - [ ] Planifier les algorithmes pour:
-  - Calcul des histogrammes (max, src, real)
-  - Calcul des pertes d'eau (leaks)
+  - [ ] Calcul des histogrammes (max, src, real)
+  - [ ] Calcul des pertes d'eau (leaks)
 - [ ] Dessiner un diagramme de flux de données
 
 ## 2. Implémentation du script Shell
