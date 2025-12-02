@@ -43,7 +43,6 @@ int main()
     {
         fprintf(stderr, "Erreur : Impossible d'ouvrir le fichier %s\n", OUTPUT_PATH);
         fclose(in1);
-        fclose(in2);
         return 1;
     }
 
@@ -60,13 +59,6 @@ int main()
     }
     }
 
-    // Lecture du second fichier et écriture dans le fichier CSV
-    while (fgets(line, sizeof(line), in2))
-    {
-        if (strlen(line) > 1) { // Ignorer les lignes vides
-        parse_and_write(line, out);
-    }
-    }
 
     // Fermeture des fichiers
     fclose(in1);
