@@ -122,9 +122,9 @@ AVLNode* process_input_csv(const char* filepath, AVLNode* root, int mode) {
     // Sauter l'en-tête si présent
     if (fgets(line, sizeof(line), file)) {
         if (strstr(line, "Station") || strstr(line, "Amont") || strstr(line, "Volume")) {
-            // header_skipped = 1;
+            // On saute simplement l'en-tête, pas besoin de stocker cette information
             lines_read++;
-                 } else {
+        } else {
             // Si ce n'est pas un en-tête, revenir au début de la ligne
             rewind(file);
         }
@@ -154,7 +154,7 @@ AVLNode* process_input_csv(const char* filepath, AVLNode* root, int mode) {
                 AVLNode* node = avl_search(root, col2_amont);
                 if (node) {
                     // Mise à jour des données existantes - prendre la valeur max
-    FactoryData* data = (FactoryData*)node->value;
+                    FactoryData* data = (FactoryData*)node->value;
                     if (volume > data->capacity) {
                         data->capacity = volume;
                     }
@@ -164,7 +164,7 @@ AVLNode* process_input_csv(const char* filepath, AVLNode* root, int mode) {
                     if (!data) {
                         perror("Memory allocation error");
                         continue;
-    }
+                    }
                     data->capacity = volume;
                     data->load_volume = 0;
                     data->real_volume = 0;
@@ -172,7 +172,7 @@ AVLNode* process_input_csv(const char* filepath, AVLNode* root, int mode) {
 
                     // Insérer dans AVL (Utilisant l'ID de Col 2)
                     root = avl_insert(root, col2_amont, data);
-}
+                }
                 lines_matched++;
             }
         }
@@ -215,7 +215,7 @@ AVLNode* process_input_csv(const char* filepath, AVLNode* root, int mode) {
 
                 AVLNode* node = avl_search(root, col1_station);
                 if (node) {
-    FactoryData* data = (FactoryData*)node->value;
+                    FactoryData* data = (FactoryData*)node->value;
                     data->real_volume += volume - (volume * fuite / 100.0);  // Volume réel = volume traité - fuites
                     data->count++;
                 } else {
