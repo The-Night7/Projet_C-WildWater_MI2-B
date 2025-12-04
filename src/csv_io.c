@@ -105,6 +105,7 @@ AVLNode* process_input_csv(const char* filepath, AVLNode* root, int mode) {
     char line[BUFFER_SIZE];
     int lines_read = 0;
     int lines_matched = 0;
+    // Suppression de la variable non utilisée
     // int header_skipped = 0;
 
     // Afficher les 5 premières lignes pour débogage
