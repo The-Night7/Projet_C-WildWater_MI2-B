@@ -13,7 +13,8 @@ if [ "$#" -ne 1 ]; then
 fi
 
 INPUT_FILE="$1"
-EXECUTABLE="./c-wildwater"
+EXECUTABLE="../src/c-wildwater"
+PROJECT_DIR="../src"
 
 # 2. Vérification de l'existence du fichier de données
 if [ ! -f "$INPUT_FILE" ]; then
@@ -23,7 +24,7 @@ fi
 
 # 3. Compilation du projet (Nettoyage + Compilation)
 echo "--- Compilation en cours ---"
-make re
+(cd $PROJECT_DIR && make re)
 
 # Vérifier si la compilation a réussi (code de retour 0)
 if [ $? -ne 0 ]; then

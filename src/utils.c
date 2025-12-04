@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include "utils.h"
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
@@ -118,14 +119,16 @@ AVLNode* avl_insert(AVLNode* root, const char* key, void* value) {
     return root;
 }
 
-void* avl_search(AVLNode* root, const char* key) {
-    if (root == NULL) return NULL;
+AVLNode* avl_search(AVLNode* root, const char* key) {
+    if (root == NULL || strcmp(key, root->key) == 0)
+        return root;
 
-    int cmp = strcmp(key, root->key);
-    if (cmp == 0) return root->value;
-    if (cmp < 0) return avl_search(root->left, key);
+    if (strcmp(key, root->key) < 0)
+        return avl_search(root->left, key);
+
     return avl_search(root->right, key);
 }
+
 
 void avl_destroy(AVLNode* root, void (*free_value)(void*)) {
     if (root == NULL) return;
@@ -174,5 +177,32 @@ int read_data_file(const char* filepath, void (*callback)(char**, int, void*), v
     }
 
     fclose(file);
+    return 0;
+}
+
+void trim_whitespace(char *str) {
+    if (str == NULL) return;
+
+    // Pointeur vers la fin de la chaîne
+    char *end;
+
+    // Supprimer les espaces au début : on avance le pointeur
+    // Note : Cette implémentation modifie la chaîne en place mais ne déplace pas la mémoire,
+    // pour une version plus simple, on nettoie souvent juste la fin.
+    // Ici, on va se concentrer sur la fin (newline) qui pose souvent problème en CSV.
+
+    // Suppression des espaces à la fin
+    end = str + strlen(str) - 1;
+    while (end > str && (isspace((unsigned char)*end) || *end == '\n' || *end == '\r')) {
+        end--;
+    }
+    // Marquer la nouvelle fin de chaîne
+    *(end + 1) = '\0';
+}
+
+int is_empty(const char *str) {
+    if (str == NULL || str[0] == '\0') {
+        return 1;
+    }
     return 0;
 }

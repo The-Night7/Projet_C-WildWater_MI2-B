@@ -1,10 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#define FILE1_PATH "data/c-wildwater_v0.dat"
-#define FILE2_PATH "data/c-wildwater_v3.dat"
-#define OUTPUT_PATH "data/c-wildwater.csv"
+#include "make_csv.h"
 
 // Fonction pour analyser une ligne et écrire dans le fichier CSV
 void parse_and_write(const char *input_line, FILE *output_file)
@@ -23,54 +20,38 @@ void parse_and_write(const char *input_line, FILE *output_file)
 
     // Vérifier si tous les champs ont été correctement analysés
     if (parsed == 5) {
-        fprintf(output_file, "%s,%s,%s,%s,%.3f\n", factory_t, amont, aval, vol, pertes);
+        fprintf(output_file, "%s;%s;%s;%s;%.3f\n", factory_t, amont, aval, vol, pertes);
     } else {
         fprintf(stderr, "Erreur : Ligne mal formatée - %s\n", clean_line);
     }
 }
 
-int main()
+// Fonction pour convertir un fichier .dat en .csv
+int convert_dat_to_csv_file(const char* input_file, const char* output_file)
 {
     // Ouverture des fichiers en mode lecture et écriture
-    FILE *in1 = fopen(FILE1_PATH, "r");
-    if (!in1)
+    FILE *in = fopen(input_file, "r");
+    if (!in)
     {
-        fprintf(stderr, "Erreur : Impossible d'ouvrir le fichier %s\n", FILE1_PATH);
+        fprintf(stderr, "Erreur : Impossible d'ouvrir le fichier %s\n", input_file);
         return 1;
     }
 
-    FILE *in2 = fopen(FILE2_PATH, "r");
-    if (!in2)
-    {
-        fprintf(stderr, "Erreur : Impossible d'ouvrir le fichier %s\n", FILE2_PATH);
-        fclose(in1);
-        return 1;
-    }
-
-    FILE *out = fopen(OUTPUT_PATH, "w");
+    FILE *out = fopen(output_file, "w");
     if (!out)
     {
-        fprintf(stderr, "Erreur : Impossible d'ouvrir le fichier %s\n", OUTPUT_PATH);
-        fclose(in1);
-        fclose(in2);
+        fprintf(stderr, "Erreur : Impossible d'ouvrir le fichier %s\n", output_file);
+        fclose(in);
         return 1;
     }
 
     char line[256];
 
     // Écrire l'en-tête dans le fichier CSV
-    fprintf(out, "Usine,Amont,Aval,Volume,Taux de perte\n");
+    fprintf(out, "Station;Amont;Aval;Volume;Fuite\n");
 
-    // Lecture du premier fichier et écriture dans le fichier CSV
-    while (fgets(line, sizeof(line), in1))
-    {
-        if (strlen(line) > 1) { // Ignorer les lignes vides
-        parse_and_write(line, out);
-    }
-    }
-
-    // Lecture du second fichier et écriture dans le fichier CSV
-    while (fgets(line, sizeof(line), in2))
+    // Lecture du fichier et écriture dans le fichier CSV
+    while (fgets(line, sizeof(line), in))
     {
         if (strlen(line) > 1) { // Ignorer les lignes vides
         parse_and_write(line, out);
@@ -78,10 +59,8 @@ int main()
     }
 
     // Fermeture des fichiers
-    fclose(in1);
-    fclose(in2);
+    fclose(in);
     fclose(out);
 
-    printf("Traitement terminé avec succès.\n");
     return 0;
 }

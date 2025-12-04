@@ -22,4 +22,8 @@ add_executable(
         README.md
         resume_synthetique_projet.txt
         src/make_csv.c
+        src/csv_io.c
+        src/csv_io.h
+        "src/main.c"
+        src/histogram.h
 )

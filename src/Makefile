@@ -2,55 +2,32 @@
 
 # Compilateur et options
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c99 -g
-LDFLAGS = -lm
+CFLAGS = -Wall -Wextra -Werror -std=c11 -g
 
-# Chemins des dossiers
-PROJECT_ROOT = ..
-SRC_DIR = $(PROJECT_ROOT)/src
-DATA_DIR = $(PROJECT_ROOT)/data
-
-# Fichiers source et objets (temporairement utils.c uniquement)
-SRCS = $(SRC_DIR)/utils.c
+# Fichiers sources et objets
+# On liste ici tous les fichiers .c nécessaires
+SRCS = main.c utils.c csv_io.c make_csv.c
 OBJS = $(SRCS:.c=.o)
 
-# Nom de l'exécutable
+# Nom de l'exécutable final
 TARGET = c-wildwater
 
 # Règle par défaut
 all: $(TARGET)
 
-# Compilation de l'exécutable
+# Édition de liens (Linking)
 $(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) -o $@ $(OBJS) $(LDFLAGS)
-	@echo "Compilation terminée : $(TARGET)"
+	$(CC) $(CFLAGS) -o $(TARGET) $(OBJS)
 
-# Règle générique pour compiler les fichiers objets
-$(SRC_DIR)/%.o: $(SRC_DIR)/%.c
+# Compilation des fichiers objets (.c -> .o)
+%.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# Nettoyage des fichiers générés
+# Nettoyage des fichiers temporaires
 clean:
-	rm -f $(SRC_DIR)/*.o *~ *.bak *.tmp
-	@echo "Fichiers objets et temporaires supprimés"
+	rm -f $(OBJS) $(TARGET)
 
-# Nettoyage complet
-distclean: clean
-	rm -f $(TARGET)
-	@echo "Exécutable supprimé"
+# Règle pour forcer la recompilation
+re: clean all
 
-# Exécution avec données par défaut
-run: $(TARGET)
-	./$(TARGET) $(DATA_DIR)/c-wildwater_v0.dat $(DATA_DIR)/c-wildwater_v3.dat
-
-# Afficher l'aide
-help:
-	@echo "Makefile pour le projet C-WildWater"
-	@echo "Commandes disponibles :"
-	@echo "  make          - Compile le programme"
-	@echo "  make clean    - Supprime les fichiers objets"
-	@echo "  make distclean - Supprime les fichiers objets et l'exécutable"
-	@echo "  make run      - Exécute le programme avec les données par défaut"
-	@echo "  make help     - Affiche cette aide"
-
-.PHONY: all clean distclean run help
+.PHONY: all clean re

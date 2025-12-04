@@ -8,13 +8,15 @@
 #ifndef UTILS_H
 #define UTILS_H
 
+#include <stddef.h> // Pour size_t
+
 // Structure de données AVL pour stocker les identifiants d'usines
 typedef struct AVLNode {
-    char* key;           // Identifiant de l'usine
-    void* value;         // Valeur associée
-    int height;          // Hauteur du nœud
-    struct AVLNode* left;  // Fils gauche
-    struct AVLNode* right; // Fils droit
+    char* key;
+    void* value; // Pointeur générique vers FactoryData
+    struct AVLNode *left;
+    struct AVLNode *right;
+    int height;
 } AVLNode;
 
 /**
@@ -51,7 +53,7 @@ AVLNode* avl_insert(AVLNode* root, const char* key, void* value);
  * @param key Clé à rechercher
  * @return void* Valeur associée à la clé, NULL si non trouvée
  */
-void* avl_search(AVLNode* root, const char* key);
+AVLNode* avl_search(AVLNode* root, const char* key);
 
 /**
  * @brief Libère la mémoire utilisée par un arbre AVL
@@ -70,5 +72,20 @@ void avl_destroy(AVLNode* root, void (*free_value)(void*));
  * @return int 0 en cas de succès, code d'erreur sinon
  */
 int read_data_file(const char* filepath, void (*callback)(char**, int, void*), void* user_data);
+
+/**
+ * @brief Supprime les espaces et retours à la ligne au début et à la fin d'une chaîne.
+ *
+ * @param str La chaîne à nettoyer.
+ */
+void trim_whitespace(char *str);
+
+/**
+ * @brief Vérifie si une chaîne est vide ou nulle.
+ *
+ * @param str La chaîne à vérifier.
+ * @return 1 si vide, 0 sinon.
+ */
+int is_empty(const char *str);
 
 #endif // UTILS_H
