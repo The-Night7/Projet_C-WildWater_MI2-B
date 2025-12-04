@@ -105,7 +105,7 @@ AVLNode* process_input_csv(const char* filepath, AVLNode* root, int mode) {
     char line[BUFFER_SIZE];
     int lines_read = 0;
     int lines_matched = 0;
-    int header_skipped = 0;
+    // int header_skipped = 0;
 
     // Afficher les 5 premières lignes pour débogage
     printf("Aperçu des 5 premières lignes du fichier:\n");
@@ -121,8 +121,8 @@ AVLNode* process_input_csv(const char* filepath, AVLNode* root, int mode) {
     // Sauter l'en-tête si présent
     if (fgets(line, sizeof(line), file)) {
         if (strstr(line, "Station") || strstr(line, "Amont") || strstr(line, "Volume")) {
-            header_skipped = 1;
-        lines_read++;
+            // header_skipped = 1;
+            lines_read++;
                  } else {
             // Si ce n'est pas un en-tête, revenir au début de la ligne
             rewind(file);
