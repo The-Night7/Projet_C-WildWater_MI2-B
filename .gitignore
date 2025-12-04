@@ -1,0 +1,35 @@
+# Fichiers objets
+*.o
+
+# Fichiers CSV générés
+*.csv
+
+# Exécutables
+c-wildwater
+src/c-wildwater
+
+# Fichiers temporaires
+*~
+*.swp
+*.swo
+
+# Fichiers de compilation
+*.out
+*.exe
+
+# Dossiers de build
+build/
+bin/
+
+# Fichiers de débogage
+*.dSYM/
+*.su
+*.idb
+*.pdb
+
+# Fichiers de logs
+*.log
+
+# Fichiers de système
+.DS_Store
+Thumbs.db
