@@ -102,8 +102,23 @@ AVLNode* process_input_csv(const char* filepath, AVLNode* root, int mode) {
     }
 
     char line[BUFFER_SIZE];
-    
+    int lines_read = 0;
+    int lines_matched = 0;
+
+    // Afficher les 5 premières lignes pour débogage
+    printf("Aperçu des 5 premières lignes du fichier:\n");
+    int preview_count = 0;
+    while (fgets(line, sizeof(line), file) && preview_count < 5) {
+        printf("  %s", line);
+        preview_count++;
+    }
+
+    // Revenir au début du fichier
+    rewind(file);
+
     while (fgets(line, sizeof(line), file)) {
+        lines_read++;
+
         // Colonnes: 1:Station, 2:Amont, 3:Aval, 4:Volume, 5:Fuite
         char* col1_station = get_field(line, 1); // Usine (qui traite)
         char* col2_amont = get_field(line, 2);   // Source/Amont
@@ -141,6 +156,7 @@ AVLNode* process_input_csv(const char* filepath, AVLNode* root, int mode) {
                     // Insérer dans AVL (Utilisant l'ID de Col 2)
                     root = avl_insert(root, col2_amont, data);
              }
+                lines_matched++;
         }
     }
 
@@ -170,6 +186,7 @@ AVLNode* process_input_csv(const char* filepath, AVLNode* root, int mode) {
 
                     root = avl_insert(root, col3_aval, data);
 }
+                lines_matched++;
             }
         }
 
@@ -197,9 +214,14 @@ AVLNode* process_input_csv(const char* filepath, AVLNode* root, int mode) {
 
                     root = avl_insert(root, col1_station, data);
                 }
+                lines_matched++;
             }
         }
     }
+
+    printf("Lignes lues: %d, lignes correspondant aux critères du mode %d: %d\n",
+           lines_read, mode, lines_matched);
+
     fclose(file);
     return root;
 }
