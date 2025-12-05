@@ -121,94 +121,56 @@ void process_csv_file(const char *filename) {
  * @param root: pointeur vers la racine AVL
  * @param mode: 1=max, 2=src, 3=real (pour savoir quelle colonne lire)
  */
-void process_input_csv(const char* input_filename, const char* output_filename) {
-    // --- AJOUT DE SÉCURITÉ ---
-    if (input_filename == NULL) {
-        fprintf(stderr, "Erreur critique : input_filename est NULL\n");
-        exit(EXIT_FAILURE);
-    }
-    if (output_filename == NULL) {
-        fprintf(stderr, "Erreur critique : output_filename est NULL\n");
-        exit(EXIT_FAILURE);
-    }
-
-    printf("Debug: Input='%s', Output='%s'\n", input_filename, output_filename);
-    // -------------------------
-
+// Fonction pour charger les données du CSV dans l'AVL
+AVLNode* process_input_csv(const char* input_filename, AVLNode* root, int mode) {
     FILE* fin = fopen(input_filename, "r");
     if (!fin) {
         perror("Erreur ouverture fichier entrée");
-        return;
+        exit(EXIT_FAILURE);
     }
 
-    FILE* fout = fopen(output_filename, "w");
-    if (!fout) {
-        perror("Erreur ouverture fichier sortie");
-        fclose(fin);
-        return;
-    }
     char line[MAX_LINE_LENGTH];
-    long line_count = 0;
-    long written_count = 0;
 
-    // 1. Lire l'en-tête (première ligne) pour l'ignorer ou la copier
-    if (fgets(line, sizeof(line), fin)) {
-        // Optionnel : écrire l'en-tête dans le fichier de sortie
-        fprintf(fout, "%s", line);
-    }
+    // Sauter l'en-tête
+    fgets(line, MAX_LINE_LENGTH, fin);
 
-    printf("Début du traitement de %s...\n", input_filename);
+    while (fgets(line, MAX_LINE_LENGTH, fin)) {
+        line[strcspn(line, "\r\n")] = 0; // Nettoyage fin de ligne
 
-    // 2. Boucle de lecture
-    while (fgets(line, sizeof(line), fin)) {
-        line_count++;
+        // Parsing (Station;Amont;Aval;Volume;Fuite)
+        char* token = strtok(line, ";");
+        if (!token) continue;
 
-        // Nettoyer le saut de ligne final (\n)
-        line[strcspn(line, "\r\n")] = 0;
+        // ID Station
+        int station_id = atoi(token); // Ou garder en char* selon ta struct
 
-        // Ignorer les lignes vides
-        if (strlen(line) == 0) continue;
+        // On saute Amont (2) et Aval (3) pour l'instant si pas utilisés
+        strtok(NULL, ";");
+        strtok(NULL, ";");
 
-        // --- EXEMPLE D'EXTRACTION ---
-        // Supposons que le CSV est : Station;Amont;Aval;Volume;Fuite
-        // Colonnes : 1=Station, 2=Amont, 3=Aval, 4=Volume, 5=Fuite
+        // Volume (4)
+        char* vol_str = strtok(NULL, ";");
+        double capacity = vol_str ? atof(vol_str) : 0.0;
 
-        char col_station[256];
-        char col_volume[256];
+        // Fuite (5) - ou autre selon tes colonnes
+        char* leak_str = strtok(NULL, ";");
+        double load = leak_str ? atof(leak_str) : 0.0;
 
-        // Utilisation de la version sûre
-        get_field_safe(line, 1, col_station, sizeof(col_station));
-        get_field_safe(line, 4, col_volume, sizeof(col_volume));
+        // Création de la structure de données
+        FactoryData* data = malloc(sizeof(FactoryData));
+        if (data) {
+            data->id = station_id;
+            data->capacity = capacity;
+            data->load_volume = load;
+            data->real_volume = capacity - load; // Exemple de calcul
 
-        // --- FILTRAGE (A ADAPTER SELON TA CONSIGNE) ---
-        // Exemple : On ne garde que les lignes qui ont un Volume valide (pas "-")
-        // Ou on garde tout pour tester au début.
-
-        int keep_line = 1; // Par défaut on garde tout pour tester
-
-        // Exemple de filtre : si le volume est "-", on ignore (décommente pour activer)
-        // if (strcmp(col_volume, "-") == 0) keep_line = 0;
-
-        if (keep_line) {
-            // Écriture dans le fichier de sortie
-            // Tu peux réécrire la ligne entière ou un format spécifique
-            fprintf(fout, "%s\n", line);
-            written_count++;
-        }
-
-        // Debug : Afficher l'avancement toutes les 100 000 lignes
-        if (line_count % 100000 == 0) {
-            printf("Lignes lues : %ld | Lignes écrites : %ld\r", line_count, written_count);
-            fflush(stdout);
+            // Insertion dans l'AVL
+            root = avl_insert(root, data, mode);
         }
     }
-
-    printf("\nTraitement terminé.\n");
-    printf("Total lu : %ld\n", line_count);
-    printf("Total écrit : %ld\n", written_count);
 
     fclose(fin);
-    fclose(fout);
+    return root;
 }
 
 // Fonction auxiliaire pour écrire l'AVL dans un CSV (Parcours inverse en ordre)

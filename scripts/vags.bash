@@ -89,7 +89,7 @@ if [ "$OPERATION_TYPE" = "histogram" ]; then
     fi
     echo "Mode: histogramme ($ANALYSIS_MODE)"
     # On suppose que l'ordre est : Entrée, Sortie, Mode, Option
-    $EXECUTABLE "$INPUT_FILE" "$OUTPUT_FILE" "histo" "$ANALYSIS_MODE"
+    $EXECUTABLE "$INPUT_FILE" "output_histo_${ANALYSIS_MODE}.csv" "histo" "$ANALYSIS_MODE"
 
 else
     echo "Mode: calcul des fuites pour l'usine $FACTORY_ID"

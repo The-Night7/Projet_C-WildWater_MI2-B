@@ -9,11 +9,11 @@
 #define UTILS_H
 
 #include <stddef.h> // Pour size_t
+#include "histogram.h" // FactoryData
 
 // Structure de données AVL pour stocker les identifiants d'usines
 typedef struct AVLNode {
-    char* key;
-    void* value; // Pointeur générique vers FactoryData
+    FactoryData* value; // Pointeur vers FactoryData
     struct AVLNode *left;
     struct AVLNode *right;
     int height;

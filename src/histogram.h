@@ -10,6 +10,7 @@
  * Cette structure sera stockée dans le champ 'void* value' du noeud AVL.
  */
 typedef struct {
+    char id[50];         // Identifiant de l'usine (utilisé partout)
     float capacity;      // Capacité de l'usine (utilisé pour l'argument 'max')
     float load_volume;   // Volume total traité (utilisé pour l'argument 'src')
     float real_volume;   // Volume réel consommé (utilisé pour l'argument 'real')
