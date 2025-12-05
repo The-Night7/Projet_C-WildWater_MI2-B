@@ -49,7 +49,7 @@ int generate_histogram(const char* input_csv_file, const char* output_csv_file, 
     void count_nodes(AVLNode* node) {
         if (node == NULL) return;
         node_count++;
-        FactoryData* data = (FactoryData*)node->value;
+        FactoryData* data = (FactoryData*)node->data;
         if (mode == HISTO_MODE_MAX) total_value += data->capacity;
         else if (mode == HISTO_MODE_SRC) total_value += data->load_volume;
         else if (mode == HISTO_MODE_REAL) total_value += data->real_volume;

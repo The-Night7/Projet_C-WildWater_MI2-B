@@ -68,51 +68,52 @@ void get_field_safe(char* line, int index, char* dest, size_t dest_size) {
     dest[0] = '\0';
 }
 
-void process_csv_file(const char *filename) {
-    FILE *fin = fopen(filename, "r");
-    if (fin == NULL) {
-        perror("Error opening file"); // Affiche l'erreur système (ex: fichier introuvable)
+AVLNode* process_input_csv(const char* input_filename, AVLNode* root, int mode) {
+    FILE* fin = fopen(input_filename, "r");
+    if (!fin) {
+        perror("Erreur ouverture fichier entrée");
         exit(EXIT_FAILURE);
     }
 
     char line[MAX_LINE_LENGTH];
-    long line_count = 0;
-    long written_count = 0;
+    // Sauter l'en-tête
+    fgets(line, MAX_LINE_LENGTH, fin);
 
-    printf("Processing file: %s\n", filename);
-
-    // 1. Sauter l'en-tête (Station;Amont;Aval;Volume;Fuite)
-    if (!fgets(line, MAX_LINE_LENGTH, fin)) {
-        fclose(fin);
-        return;
-    }
-    // 2. Lecture ligne par ligne
     while (fgets(line, MAX_LINE_LENGTH, fin)) {
-        line_count++;
-
-        // Suppression du saut de ligne final
         line[strcspn(line, "\r\n")] = 0;
 
-        // Copie de la ligne pour ne pas détruire l'original si besoin de debug,
-        // mais ici on travaille directement sur 'line' pour l'efficacité.
+        char* token = strtok(line, ";");
+        if (!token) continue;
 
-        // Parsing strict sur le point-virgule
-        char* station = strtok(line, ";");
-        char* amont   = strtok(NULL, ";");
-        char* aval    = strtok(NULL, ";");
-        char* volume  = strtok(NULL, ";");
-        char* fuite   = strtok(NULL, ";");
+        // 1. ID
+        int station_id = atoi(token);
 
-        // Si la ligne est complète (5 tokens trouvés)
-        if (station && amont && aval && volume && fuite) {
-            // Ici, tu pourras stocker les données dans tes structures plus tard
-            written_count++;
+        // 2. Amont & 3. Aval (ignorés)
+        strtok(NULL, ";");
+        strtok(NULL, ";");
+
+        // 4. Capacity
+        char* vol_str = strtok(NULL, ";");
+        double capacity = (vol_str && *vol_str != '-') ? atof(vol_str) : 0.0;
+
+        // 5. Load
+        char* load_str = strtok(NULL, ";");
+        double load = (load_str && *load_str != '-') ? atof(load_str) : 0.0;
+
+        FactoryData* data = malloc(sizeof(FactoryData));
+        if (data) {
+            data->ID = station_id; // <-- Correction ici (ID majuscule)
+            data->capacity = capacity;
+            data->load_volume = load;
+            data->real_volume = capacity - load;
+
+            // Insertion avec la fonction définie dans utils.c
+            root = insert_avl(root, data, mode);
         }
     }
 
-    printf("Total lines processed: %ld\n", line_count);
-    printf("Total valid lines: %ld\n", written_count);
     fclose(fin);
+    return root;
 }
 
 /**

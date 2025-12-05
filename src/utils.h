@@ -13,7 +13,7 @@
 
 // Structure de données AVL pour stocker les identifiants d'usines
 typedef struct AVLNode {
-    FactoryData* value; // Pointeur vers FactoryData
+    FactoryData* data; // Pointeur vers FactoryData
     struct AVLNode *left;
     struct AVLNode *right;
     int height;
@@ -39,12 +39,12 @@ AVLNode* avl_create_node(const char* key, void* value);
 /**
  * @brief Insère un élément dans un arbre AVL
  * 
- * @param root Racine de l'arbre AVL
- * @param key Clé à insérer
- * @param value Valeur associée
+ * @param node Racine de l'arbre AVL
+ * @param data FactoryData à insérer
+ * @param mode Mode de récolte
  * @return AVLNode* Nouvelle racine de l'arbre après insertion
  */
-AVLNode* avl_insert(AVLNode* root, const char* key, void* value);
+AVLNode* insert_avl(AVLNode* node, FactoryData* data, int mode);
 
 /**
  * @brief Recherche un élément dans un arbre AVL
@@ -59,9 +59,9 @@ AVLNode* avl_search(AVLNode* root, const char* key);
  * @brief Libère la mémoire utilisée par un arbre AVL
  * 
  * @param root Racine de l'arbre AVL
- * @param free_value Fonction pour libérer les valeurs (NULL si non nécessaire)
+ * @param free_data Fonction pour libérer les valeurs (NULL si non nécessaire)
  */
-void avl_destroy(AVLNode* root, void (*free_value)(void*));
+void avl_destroy(AVLNode* root, void (*free_data)(void*));
 
 /**
  * @brief Lit les données des fichiers CSV
