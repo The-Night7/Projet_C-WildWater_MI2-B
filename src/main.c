@@ -109,6 +109,16 @@ int generate_histogram(const char* csv_file, HistogramMode mode) {
 }
 
 int main(int argc, char *argv[]) {
+    // On attend 5 arguments : prog, input, output, mode, option
+    if (argc < 5) {
+        fprintf(stderr, "Usage: %s <input.csv> <output.csv> <mode> <option>\n", argv[0]);
+        return 1;
+    }
+
+    char *input_file = argv[1];
+    char *output_file = argv[2]; // C'est ici qu'on récupère le fichier de sortie
+    char *mode = argv[3];
+
     // Mesurer le temps d'exécution
     clock_t start_time = clock();
 

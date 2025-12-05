@@ -77,9 +77,6 @@ echo "--- Compilation réussie ---"
 # 4. Exécution du programme C
 echo "--- Lancement de l'analyse ---"
 if [ "$OPERATION_TYPE" = "histogram" ]; then
-    echo "Mode: histogramme ($ANALYSIS_MODE)"
-    $EXECUTABLE "$INPUT_FILE" "histo" "$ANALYSIS_MODE"
-
     # 5. Vérification du fichier de sortie
     OUTPUT_FILE="../scripts/output_histo_${ANALYSIS_MODE}.csv"
     if [ -f "$OUTPUT_FILE" ]; then
@@ -90,6 +87,10 @@ if [ "$OPERATION_TYPE" = "histogram" ]; then
     else
         echo "Attention: Aucun fichier de sortie n'a été généré."
     fi
+    echo "Mode: histogramme ($ANALYSIS_MODE)"
+    # On suppose que l'ordre est : Entrée, Sortie, Mode, Option
+    $EXECUTABLE "$INPUT_FILE" "$OUTPUT_FILE" "histo" "$ANALYSIS_MODE"
+
 else
     echo "Mode: calcul des fuites pour l'usine $FACTORY_ID"
     $EXECUTABLE "$INPUT_FILE" "leaks" "$FACTORY_ID"

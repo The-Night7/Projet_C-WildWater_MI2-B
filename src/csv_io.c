@@ -20,7 +20,7 @@ char* get_field(char* line, int index) {
     int col = 1;
     char* ptr = line;
     char* start = line;
-    
+
     while (*ptr) {
         if (*ptr == ';') {
             if (col == index) {
@@ -46,47 +46,73 @@ char* get_field(char* line, int index) {
     return NULL;
 }
 
+void get_field_safe(char* line, int index, char* dest, size_t dest_size) {
+    // On travaille sur une copie pour ne pas détruire la ligne originale si besoin
+    char temp_line[MAX_LINE_LENGTH];
+    strncpy(temp_line, line, MAX_LINE_LENGTH);
+    temp_line[MAX_LINE_LENGTH - 1] = '\0';
+
+    char* token = strtok(temp_line, ";");
+    int current_col = 1;
+
+    while (token != NULL) {
+        if (current_col == index) {
+            strncpy(dest, token, dest_size);
+            dest[dest_size - 1] = '\0';
+            return;
+        }
+        token = strtok(NULL, ";");
+        current_col++;
+    }
+    // Si non trouvé, chaîne vide
+    dest[0] = '\0';
+}
+
 void process_csv_file(const char *filename) {
-    FILE *file = fopen(filename, "r");
-    if (file == NULL) {
+    FILE *fin = fopen(filename, "r");
+    if (fin == NULL) {
         perror("Error opening file"); // Affiche l'erreur système (ex: fichier introuvable)
         exit(EXIT_FAILURE);
     }
 
-    char buffer[MAX_LINE_LENGTH];  // Renommé pour éviter la confusion
-    int line_count = 0;
+    char line[MAX_LINE_LENGTH];
+    long line_count = 0;
+    long written_count = 0;
 
     printf("Processing file: %s\n", filename);
 
-    // Lecture ligne par ligne
-    while (fgets(buffer, sizeof(buffer), file)) {
+    // 1. Sauter l'en-tête (Station;Amont;Aval;Volume;Fuite)
+    if (!fgets(line, MAX_LINE_LENGTH, fin)) {
+        fclose(fin);
+        return;
+    }
+    // 2. Lecture ligne par ligne
+    while (fgets(line, MAX_LINE_LENGTH, fin)) {
         line_count++;
 
-        // Nettoyage de la ligne (suppression \n, \r)
-        trim_whitespace(buffer);
+        // Suppression du saut de ligne final
+        line[strcspn(line, "\r\n")] = 0;
 
-        // Ignorer les lignes vides
-        if (is_empty(buffer)) continue;
+        // Copie de la ligne pour ne pas détruire l'original si besoin de debug,
+        // mais ici on travaille directement sur 'line' pour l'efficacité.
 
-        // Découpage par point-virgule
-        // Note: strtok n'est pas idéal pour les champs vides (ex: ";;"),
-        // mais suffisant pour une première approche robuste si le format est respecté.
-        char *token = strtok(buffer, ";");
-        int field_index = 0;
+        // Parsing strict sur le point-virgule
+        char* station = strtok(line, ";");
+        char* amont   = strtok(NULL, ";");
+        char* aval    = strtok(NULL, ";");
+        char* volume  = strtok(NULL, ";");
+        char* fuite   = strtok(NULL, ";");
 
-        // Exemple d'affichage pour débogage
-        // printf("Line %d: ", line_count);
-        while (token != NULL) {
+        // Si la ligne est complète (5 tokens trouvés)
+        if (station && amont && aval && volume && fuite) {
             // Ici, tu pourras stocker les données dans tes structures plus tard
-            // printf("[%s] ", token);
-            token = strtok(NULL, ";");
-            field_index++;
+            written_count++;
         }
-        // printf("\n");
     }
 
-    printf("Total lines processed: %d\n", line_count);
-    fclose(file);
+    printf("Total lines processed: %ld\n", line_count);
+    printf("Total valid lines: %ld\n", written_count);
+    fclose(fin);
 }
 
 /**
@@ -95,220 +121,94 @@ void process_csv_file(const char *filename) {
  * @param root: pointeur vers la racine AVL
  * @param mode: 1=max, 2=src, 3=real (pour savoir quelle colonne lire)
  */
-AVLNode* process_input_csv(const char* filepath, AVLNode* root, int mode) {
-    FILE* file = fopen(filepath, "r");
-    if (!file) {
-        perror("Error opening input file");
-        return root;
+void process_input_csv(const char* input_filename, const char* output_filename) {
+    // --- AJOUT DE SÉCURITÉ ---
+    if (input_filename == NULL) {
+        fprintf(stderr, "Erreur critique : input_filename est NULL\n");
+        exit(EXIT_FAILURE);
+    }
+    if (output_filename == NULL) {
+        fprintf(stderr, "Erreur critique : output_filename est NULL\n");
+        exit(EXIT_FAILURE);
     }
 
-    char line[BUFFER_SIZE];
-    int lines_read = 0;
-    int lines_matched = 0;
-    // Suppression de la variable non utilisée
-    // int header_skipped = 0;
+    printf("Debug: Input='%s', Output='%s'\n", input_filename, output_filename);
+    // -------------------------
 
-    // Afficher les 5 premières lignes pour débogage
-    printf("Aperçu des 5 premières lignes du fichier:\n");
-    int preview_count = 0;
-    while (fgets(line, sizeof(line), file) && preview_count < 5) {
-        printf("  %s", line);
-        preview_count++;
+    FILE* fin = fopen(input_filename, "r");
+    if (!fin) {
+        perror("Erreur ouverture fichier entrée");
+        return;
     }
 
-    // Revenir au début du fichier
-    rewind(file);
+    FILE* fout = fopen(output_filename, "w");
+    if (!fout) {
+        perror("Erreur ouverture fichier sortie");
+        fclose(fin);
+        return;
+    }
+    char line[MAX_LINE_LENGTH];
+    long line_count = 0;
+    long written_count = 0;
 
-    // Sauter l'en-tête si présent
-    if (fgets(line, sizeof(line), file)) {
-        if (strstr(line, "Station") || strstr(line, "Amont") || strstr(line, "Volume")) {
-            // On saute simplement l'en-tête, pas besoin de stocker cette information
-            lines_read++;
-        } else {
-            // Si ce n'est pas un en-tête, revenir au début de la ligne
-            rewind(file);
-        }
+    // 1. Lire l'en-tête (première ligne) pour l'ignorer ou la copier
+    if (fgets(line, sizeof(line), fin)) {
+        // Optionnel : écrire l'en-tête dans le fichier de sortie
+        fprintf(fout, "%s", line);
     }
 
-    while (fgets(line, sizeof(line), file)) {
-        lines_read++;
+    printf("Début du traitement de %s...\n", input_filename);
 
-        // Colonnes: 1:Station, 2:Amont, 3:Aval, 4:Volume, 5:Fuite
-        char* col1_station = get_field(line, 1); // Usine (qui traite)
-        char* col2_amont = get_field(line, 2);   // Source/Amont
-        char* col3_aval = get_field(line, 3);    // Destination/Aval
-        char* col4_vol = get_field(line, 4);     // Volume
-        char* col5_fuite = get_field(line, 5);   // Fuite
+    // 2. Boucle de lecture
+    while (fgets(line, sizeof(line), fin)) {
+        line_count++;
 
-        float volume = parse_float(col4_vol);
-        float fuite = parse_float(col5_fuite);
+        // Nettoyer le saut de ligne final (\n)
+        line[strcspn(line, "\r\n")] = 0;
 
-        // CAS 1: Histo Max (Capacité)
-        // Recherche des lignes pour les capacités maximales des usines
-        if (mode == HISTO_MODE_MAX) {
-            // Chercher les lignes qui définissent la capacité des installations
-            // Vérifier si col2_amont contient "Facility" ou "Plant" (installations)
-            if (col2_amont && (strstr(col2_amont, "Facility") || strstr(col2_amont, "Plant"))) {
+        // Ignorer les lignes vides
+        if (strlen(line) == 0) continue;
 
-                // Vérifier si le nœud existe déjà
-                AVLNode* node = avl_search(root, col2_amont);
-                if (node) {
-                    // Mise à jour des données existantes - prendre la valeur max
-                    FactoryData* data = (FactoryData*)node->value;
-                    if (volume > data->capacity) {
-                        data->capacity = volume;
-                    }
-                } else {
-                    // Création d'une nouvelle structure avec initialisation complète
-                    FactoryData* data = malloc(sizeof(FactoryData));
-                    if (!data) {
-                        perror("Memory allocation error");
-                        continue;
-                    }
-                    data->capacity = volume;
-                    data->load_volume = 0;
-                    data->real_volume = 0;
-                    data->count = 1;
+        // --- EXEMPLE D'EXTRACTION ---
+        // Supposons que le CSV est : Station;Amont;Aval;Volume;Fuite
+        // Colonnes : 1=Station, 2=Amont, 3=Aval, 4=Volume, 5=Fuite
 
-                    // Insérer dans AVL (Utilisant l'ID de Col 2)
-                    root = avl_insert(root, col2_amont, data);
-                }
-                lines_matched++;
-            }
+        char col_station[256];
+        char col_volume[256];
+
+        // Utilisation de la version sûre
+        get_field_safe(line, 1, col_station, sizeof(col_station));
+        get_field_safe(line, 4, col_volume, sizeof(col_volume));
+
+        // --- FILTRAGE (A ADAPTER SELON TA CONSIGNE) ---
+        // Exemple : On ne garde que les lignes qui ont un Volume valide (pas "-")
+        // Ou on garde tout pour tester au début.
+
+        int keep_line = 1; // Par défaut on garde tout pour tester
+
+        // Exemple de filtre : si le volume est "-", on ignore (décommente pour activer)
+        // if (strcmp(col_volume, "-") == 0) keep_line = 0;
+
+        if (keep_line) {
+            // Écriture dans le fichier de sortie
+            // Tu peux réécrire la ligne entière ou un format spécifique
+            fprintf(fout, "%s\n", line);
+            written_count++;
         }
 
-        // CAS 2: Histo Src (Charge totale)
-        else if (mode == HISTO_MODE_SRC) {
-            // Chercher les lignes où une source alimente une installation
-            if (col3_aval && (strstr(col3_aval, "Facility") || strstr(col3_aval, "Plant"))) {
-
-                // Rechercher l'installation dans l'arbre
-                AVLNode* node = avl_search(root, col3_aval);
-                if (node) {
-                    // Mise à jour des données existantes
-                    FactoryData* data = (FactoryData*)node->value;
-                    data->load_volume += volume;
-                    data->count++;
-                } else {
-                    // Création d'une nouvelle structure avec initialisation complète
-                    FactoryData* data = malloc(sizeof(FactoryData));
-                    if (!data) {
-                        perror("Memory allocation error");
-                        continue;
-                    }
-                    data->capacity = 0;  // Sera rempli plus tard si nécessaire
-                    data->load_volume = volume;
-                    data->real_volume = 0;
-                    data->count = 1;
-
-                    root = avl_insert(root, col3_aval, data);
-                }
-                lines_matched++;
-            }
-        }
-
-        // CAS 3: Histo Real (Volume réel consommé)
-        else if (mode == HISTO_MODE_REAL) {
-            // Identifier les lignes pertinentes pour le mode "real"
-            // Lignes où une installation traite de l'eau
-            if (col1_station && (strstr(col1_station, "Facility") || strstr(col1_station, "Plant"))) {
-
-                AVLNode* node = avl_search(root, col1_station);
-                if (node) {
-                    FactoryData* data = (FactoryData*)node->value;
-                    data->real_volume += volume - (volume * fuite / 100.0);  // Volume réel = volume traité - fuites
-                    data->count++;
-                } else {
-                    FactoryData* data = malloc(sizeof(FactoryData));
-                    if (!data) {
-                        perror("Memory allocation error");
-                        continue;
-                    }
-                    data->capacity = 0;
-                    data->load_volume = 0;
-                    data->real_volume = volume - (volume * fuite / 100.0);
-                    data->count = 1;
-
-                    root = avl_insert(root, col1_station, data);
-                }
-                lines_matched++;
-            }
-        }
-
-        // CAS 4: Histo All (tous les modes combinés - bonus)
-        else if (mode == HISTO_MODE_ALL) {
-            // Pour le mode "all", nous devons collecter toutes les données
-            // Traiter les données pour la capacité maximale
-            if (col2_amont && (strstr(col2_amont, "Facility") || strstr(col2_amont, "Plant"))) {
-                AVLNode* node = avl_search(root, col2_amont);
-                if (node) {
-                    FactoryData* data = (FactoryData*)node->value;
-                    if (volume > data->capacity) {
-                        data->capacity = volume;
-                    }
-                } else {
-                    FactoryData* data = malloc(sizeof(FactoryData));
-                    if (!data) {
-                        perror("Memory allocation error");
-                        continue;
-                    }
-                    data->capacity = volume;
-                    data->load_volume = 0;
-                    data->real_volume = 0;
-                    data->count = 1;
-                    root = avl_insert(root, col2_amont, data);
-                }
-                lines_matched++;
-            }
-
-            // Traiter les données pour le volume capté
-            if (col3_aval && (strstr(col3_aval, "Facility") || strstr(col3_aval, "Plant"))) {
-                AVLNode* node = avl_search(root, col3_aval);
-                if (node) {
-                    FactoryData* data = (FactoryData*)node->value;
-                    data->load_volume += volume;
-                } else {
-                    FactoryData* data = malloc(sizeof(FactoryData));
-                    if (!data) {
-                        perror("Memory allocation error");
-                        continue;
-                    }
-                    data->capacity = 0;
-                    data->load_volume = volume;
-                    data->real_volume = 0;
-                    data->count = 1;
-                    root = avl_insert(root, col3_aval, data);
-                }
-                lines_matched++;
-            }
-
-            // Traiter les données pour le volume réel
-            if (col1_station && (strstr(col1_station, "Facility") || strstr(col1_station, "Plant"))) {
-                AVLNode* node = avl_search(root, col1_station);
-                if (node) {
-                    FactoryData* data = (FactoryData*)node->value;
-                    data->real_volume += volume - (volume * fuite / 100.0);
-                } else {
-                    FactoryData* data = malloc(sizeof(FactoryData));
-                    if (!data) {
-                        perror("Memory allocation error");
-                        continue;
-                    }
-                    data->capacity = 0;
-                    data->load_volume = 0;
-                    data->real_volume = volume - (volume * fuite / 100.0);
-                    data->count = 1;
-                    root = avl_insert(root, col1_station, data);
-                }
-                lines_matched++;
-            }
+        // Debug : Afficher l'avancement toutes les 100 000 lignes
+        if (line_count % 100000 == 0) {
+            printf("Lignes lues : %ld | Lignes écrites : %ld\r", line_count, written_count);
+            fflush(stdout);
         }
     }
 
-    printf("Lignes lues: %d, lignes correspondant aux critères du mode %d: %d\n",
-           lines_read, mode, lines_matched);
-    fclose(file);
-    return root;
+    printf("\nTraitement terminé.\n");
+    printf("Total lu : %ld\n", line_count);
+    printf("Total écrit : %ld\n", written_count);
+
+    fclose(fin);
+    fclose(fout);
 }
 
 // Fonction auxiliaire pour écrire l'AVL dans un CSV (Parcours inverse en ordre)
