@@ -12,6 +12,7 @@
 #include <string.h>
 #include <ctype.h>
 #include "utils.h"
+#include "histogram_modes.h"
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 
