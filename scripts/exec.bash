@@ -92,22 +92,19 @@ if [ "$OPERATION_TYPE" = "histogram" ]; then
     echo "--- Mode Histogramme ($ANALYSIS_MODE) ---"
     OUT_CSV="$DATA_DIR/vol_${ANALYSIS_MODE}.csv"
     
-    # Exécution du programme C avec les bons arguments
-    # Format: <input.csv> <output.csv> <command> <option>
+    # Exécution du programme C avec les arguments corrects
+    # prog <input.csv> <output.csv> <command> <option>
     "$EXECUTABLE" "$INPUT_FILE" "$OUT_CSV" "histo" "$ANALYSIS_MODE"
     
+    # Vérifier si le fichier de sortie a été créé
     if [ ! -f "$OUT_CSV" ] || [ ! -s "$OUT_CSV" ]; then
-        echo "Erreur: CSV vide ou non généré."
+        echo "Erreur: Fichier CSV de sortie vide ou non généré."
         exit 1
     fi
     
-    # Tri du fichier CSV pour les graphiques
-    SORTED_CSV="${OUT_CSV%.csv}_sorted.csv"
-    LC_NUMERIC=C sort -t';' -k2,2n "$OUT_CSV" > "$SORTED_CSV"
-    
     # --- Génération des graphiques pour les 10 plus grands volumes ---
     GP_BIG="$DATA_DIR/data_big.dat"
-    tail -n 10 "$SORTED_CSV" > "$GP_BIG"
+    LC_NUMERIC=C sort -t';' -k2,2n "$OUT_CSV" | tail -n 10 > "$GP_BIG"
     IMG_BIG="$GRAPH_DIR/vol_${ANALYSIS_MODE}_big.png"
 
     gnuplot -persist <<-EOF
@@ -125,7 +122,7 @@ EOF
 
     # --- Génération des graphiques pour les 50 plus petits volumes ---
     GP_SMALL="$DATA_DIR/data_small.dat"
-    head -n 50 "$SORTED_CSV" > "$GP_SMALL"
+    LC_NUMERIC=C sort -t';' -k2,2n "$OUT_CSV" | head -n 50 > "$GP_SMALL"
     IMG_SMALL="$GRAPH_DIR/vol_${ANALYSIS_MODE}_small.png"
 
     gnuplot -persist <<-EOF
@@ -142,7 +139,7 @@ EOF
     echo "Image Bottom 50 : $IMG_SMALL"
 
     # Nettoyage des fichiers temporaires
-    rm -f "$GP_BIG" "$GP_SMALL" "$SORTED_CSV"
+    rm -f "$GP_BIG" "$GP_SMALL"
     
     # Afficher un aperçu du rapport
     echo "--- Rapport généré: $OUT_CSV ---"
@@ -153,7 +150,8 @@ elif [ "$OPERATION_TYPE" = "leaks" ]; then
     echo "--- Mode Leaks ($FACTORY_ID) ---"
     LEAK_FILE="$DATA_DIR/leaks_history.csv"
     
-    # Exécution du calcul des fuites avec les bons arguments
+    # Exécution du calcul des fuites avec les arguments corrects
+    # prog <input.csv> <output.csv> <command> <option>
     "$EXECUTABLE" "$INPUT_FILE" "$LEAK_FILE" "leaks" "$FACTORY_ID"
     
     # Vérification du fichier d'historique des rendements
