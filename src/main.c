@@ -115,20 +115,28 @@ int main(int argc, char** argv) {
         }
         // --- Logique HISTO ---
         else {
+            // Mode Histo
+            // Cas 1 : Mode MAX (On cherche les lignes de définition des usines)
+            // Structure : [Ignoré];[ID Usine];[Vide];[Capacité];[Ignoré]
             if (mode_histo == 1 && cols[1] && !cols[2] && cols[3]) {
-                if (strstr(cols[1], "Plant"))
-                    root = insert_station(root, cols[1], atol(cols[3]), 0, 0);
+                // On prend TOUT ce qui a ce format, peu importe le nom (Unit, Module, Plant...)
+                root = insert_station(root, cols[1], atol(cols[3]), 0, 0);
             }
-            else if ((mode_histo == 2 || mode_histo == 3) && cols[2] && strstr(cols[2], "Plant")) {
-                 if (cols[3]) {
-                     long vol = atol(cols[3]);
-                     long reel = vol;
-                     if (mode_histo == 3 && cols[4]) {
-                         double p = atof(cols[4]);
-                         reel = (long)(vol * (1.0 - (p/100.0)));
-                     }
-                     root = insert_station(root, cols[2], 0, vol, reel);
-                 }
+            
+            // Cas 2 : Modes SRC et REAL (On cherche les liens Source -> Usine)
+            // Structure : [Ignoré];[ID Source];[ID Usine];[Volume];[Fuite]
+            // On vérifie juste que cols[2] (l'usine) existe et qu'on a un volume
+            else if ((mode_histo == 2 || mode_histo == 3) && cols[2] && cols[3]) {
+                long vol = atol(cols[3]);
+                long reel = vol;
+                
+                if (mode_histo == 3 && cols[4]) {
+                    double p_leak = atof(cols[4]);
+                    reel = (long)(vol * (1.0 - (p_leak/100.0)));
+                }
+                
+                // On insère en utilisant l'ID de l'usine (cols[2])
+                root = insert_station(root, cols[2], 0, vol, reel);
             }
         }
     }

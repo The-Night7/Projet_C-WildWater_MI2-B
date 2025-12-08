@@ -24,12 +24,12 @@ COMMAND="$1"
 PARAM="$2"
 
 if [ "$COMMAND" = "histo" ]; then
+    # ... dans le bloc if [ "$COMMAND" = "histo" ] ...
+    
     echo "--- Mode Histo ($PARAM) ---"
     OUT_CSV="$DATA_DIR/vol_${PARAM}.csv"
-    
-    # Appel C + Tri numérique croissant
-    "$EXEC_MAIN" "$INPUT_DATA" "$PARAM" | LC_NUMERIC=C sort -t';' -k2,2n > "$OUT_CSV"
-    
+    "$EXEC_MAIN" "$INPUT_DATA" "$PARAM" | LC_ALL=C sort -t';' -k2,2g > "$OUT_CSV"
+            
     if [ ! -s "$OUT_CSV" ]; then
         echo "Erreur: CSV vide."
         exit 1
