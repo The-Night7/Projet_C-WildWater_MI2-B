@@ -73,16 +73,17 @@ fi
 echo "--- Compilation en cours ---"
 if [ ! -f "$EXECUTABLE" ]; then
     (cd "$PROJECT_DIR" && make clean && make)
-    
-    # Vérifier si la compilation a réussi
-    if [ $? -ne 0 ]; then
-        echo "Erreur : La compilation a échoué."
-        exit 1
-    fi
-    echo "--- Compilation réussie ---"
 else
-    echo "--- Exécutable déjà présent ---"
+    # Recompilation si demandée
+    (cd "$PROJECT_DIR" && make)
 fi
+
+# Vérifier si la compilation a réussi
+if [ $? -ne 0 ]; then
+    echo "Erreur : La compilation a échoué."
+    exit 1
+fi
+echo "--- Compilation réussie ---"
 
 # --- 5. Exécution et traitement ---
 echo "--- Lancement de l'analyse ---"
@@ -91,17 +92,22 @@ if [ "$OPERATION_TYPE" = "histogram" ]; then
     echo "--- Mode Histogramme ($ANALYSIS_MODE) ---"
     OUT_CSV="$DATA_DIR/vol_${ANALYSIS_MODE}.csv"
     
-    # Exécution du programme C et tri des résultats
-    "$EXECUTABLE" "$INPUT_FILE" "$ANALYSIS_MODE" | LC_NUMERIC=C sort -t';' -k2,2n > "$OUT_CSV"
+    # Exécution du programme C avec les bons arguments
+    # Format: <input.csv> <output.csv> <command> <option>
+    "$EXECUTABLE" "$INPUT_FILE" "$OUT_CSV" "histo" "$ANALYSIS_MODE"
     
-    if [ ! -s "$OUT_CSV" ]; then
-        echo "Erreur: CSV vide."
+    if [ ! -f "$OUT_CSV" ] || [ ! -s "$OUT_CSV" ]; then
+        echo "Erreur: CSV vide ou non généré."
         exit 1
     fi
     
+    # Tri du fichier CSV pour les graphiques
+    SORTED_CSV="${OUT_CSV%.csv}_sorted.csv"
+    LC_NUMERIC=C sort -t';' -k2,2n "$OUT_CSV" > "$SORTED_CSV"
+    
     # --- Génération des graphiques pour les 10 plus grands volumes ---
     GP_BIG="$DATA_DIR/data_big.dat"
-    tail -n 10 "$OUT_CSV" > "$GP_BIG"
+    tail -n 10 "$SORTED_CSV" > "$GP_BIG"
     IMG_BIG="$GRAPH_DIR/vol_${ANALYSIS_MODE}_big.png"
 
     gnuplot -persist <<-EOF
@@ -119,7 +125,7 @@ EOF
 
     # --- Génération des graphiques pour les 50 plus petits volumes ---
     GP_SMALL="$DATA_DIR/data_small.dat"
-    head -n 50 "$OUT_CSV" > "$GP_SMALL"
+    head -n 50 "$SORTED_CSV" > "$GP_SMALL"
     IMG_SMALL="$GRAPH_DIR/vol_${ANALYSIS_MODE}_small.png"
 
     gnuplot -persist <<-EOF
@@ -136,7 +142,7 @@ EOF
     echo "Image Bottom 50 : $IMG_SMALL"
 
     # Nettoyage des fichiers temporaires
-    rm "$GP_BIG" "$GP_SMALL"
+    rm -f "$GP_BIG" "$GP_SMALL" "$SORTED_CSV"
     
     # Afficher un aperçu du rapport
     echo "--- Rapport généré: $OUT_CSV ---"
@@ -145,23 +151,19 @@ EOF
 
 elif [ "$OPERATION_TYPE" = "leaks" ]; then
     echo "--- Mode Leaks ($FACTORY_ID) ---"
-    LEAK_FILE="$DATA_DIR/leaks.dat"
+    LEAK_FILE="$DATA_DIR/leaks_history.csv"
     
-    # Exécution du calcul des fuites
-    VAL=$("$EXECUTABLE" "$INPUT_FILE" "$FACTORY_ID")
-
-    if [ "$VAL" = "0" ] || [ -z "$VAL" ]; then
-        echo "Usine introuvable."
-        echo "$FACTORY_ID;-1" >> "$LEAK_FILE"
+    # Exécution du calcul des fuites avec les bons arguments
+    "$EXECUTABLE" "$INPUT_FILE" "$LEAK_FILE" "leaks" "$FACTORY_ID"
+    
+    # Vérification du fichier d'historique des rendements
+    if [ -f "$LEAK_FILE" ]; then
+        echo "--- Historique des rendements mis à jour: $LEAK_FILE ---"
+        echo "Dernière entrée:"
+        tail -n 1 "$LEAK_FILE"
     else
-        echo "Fuites: $VAL M.m3"
-        echo "$FACTORY_ID;$VAL" >> "$LEAK_FILE"
+        echo "Attention: Aucun fichier d'historique n'a été généré."
     fi
-    
-    # Afficher la dernière entrée
-    echo "--- Historique des rendements mis à jour: $LEAK_FILE ---"
-    echo "Dernière entrée:"
-    tail -n 1 "$LEAK_FILE"
 fi
 
 # --- 6. Fin ---
