@@ -1,91 +1,45 @@
 /**
  * @file utils.h
- * @brief Fonctions utilitaires pour le projet C-WildWater
- * @author Votre équipe
- * @date Novembre 2025
+ * @brief Fonctions utilitaires pour le projet C‑WildWater
+ *
+ * Ce fichier fournit quelques fonctions génériques telles qu’une
+ * implémentation minimaliste d’un arbre AVL générique et une fonction
+ * permettant de vérifier l’existence d’un fichier.  Ces utilitaires ne
+ * sont pas utilisés directement dans la solution principale mais sont
+ * laissés ici pour une éventuelle extension.
  */
 
 #ifndef UTILS_H
 #define UTILS_H
 
-#include <stddef.h> // Pour size_t
-#include "histogram.h" // FactoryData
-
-// Structure de données AVL pour stocker les identifiants d'usines
+// Structure de nœud pour un AVL générique (clé/valeur)
 typedef struct AVLNode {
-    FactoryData* data; // Pointeur vers FactoryData
-    struct AVLNode *left;
-    struct AVLNode *right;
-    int height;
+    char* key;            // Identifiant de la station
+    void* value;          // Pointeur générique vers des données
+    int height;           // Hauteur du nœud
+    struct AVLNode* left; // Sous‑arbre gauche
+    struct AVLNode* right;// Sous‑arbre droit
 } AVLNode;
 
-/**
- * @brief Vérifie si un fichier existe
- * 
- * @param filepath Chemin du fichier à vérifier
- * @return int 1 si le fichier existe, 0 sinon
- */
+// Vérifie si un fichier existe (renvoie 1 si présent, 0 sinon)
 int file_exists(const char* filepath);
 
-/**
- * @brief Crée un nouveau nœud AVL
- * 
- * @param key Clé du nœud
- * @param value Valeur associée
- * @return AVLNode* Pointeur vers le nœud créé, NULL en cas d'échec
- */
+// Créé un nouveau nœud AVL générique
 AVLNode* avl_create_node(const char* key, void* value);
 
-/**
- * @brief Insère un élément dans un arbre AVL
- * 
- * @param node Racine de l'arbre AVL
- * @param data FactoryData à insérer
- * @param mode Mode de récolte
- * @return AVLNode* Nouvelle racine de l'arbre après insertion
- */
-AVLNode* insert_avl(AVLNode* node, FactoryData* data, int mode);
+// Insère ou remplace un nœud dans l’AVL générique
+AVLNode* avl_insert(AVLNode* root, const char* key, void* value);
 
-/**
- * @brief Recherche un élément dans un arbre AVL
- * 
- * @param root Racine de l'arbre AVL
- * @param key Clé à rechercher
- * @return void* Valeur associée à la clé, NULL si non trouvée
- */
-AVLNode* avl_search(AVLNode* root, const char* key);
+// Recherche une clé dans l’AVL générique et retourne la valeur
+void* avl_search(AVLNode* root, const char* key);
 
-/**
- * @brief Libère la mémoire utilisée par un arbre AVL
- * 
- * @param root Racine de l'arbre AVL
- * @param free_data Fonction pour libérer les valeurs (NULL si non nécessaire)
- */
-void avl_destroy(AVLNode* root, void (*free_data)(void*));
+// Libère l’AVL générique.  La fonction free_value est appelée sur chaque
+// valeur si elle est fournie.
+void avl_destroy(AVLNode* root, void (*free_value)(void*));
 
-/**
- * @brief Lit les données des fichiers CSV
- * 
- * @param filepath Chemin du fichier à lire
- * @param callback Fonction de rappel appelée pour chaque ligne
- * @param user_data Données utilisateur passées à la fonction de rappel
- * @return int 0 en cas de succès, code d'erreur sinon
- */
-int read_data_file(const char* filepath, void (*callback)(char**, int, void*), void* user_data);
+// Lit un fichier CSV simple et appelle un callback pour chaque ligne
+int read_data_file(const char* filepath,
+                   void (*callback)(char**, int, void*),
+                   void* user_data);
 
-/**
- * @brief Supprime les espaces et retours à la ligne au début et à la fin d'une chaîne.
- *
- * @param str La chaîne à nettoyer.
- */
-void trim_whitespace(char *str);
-
-/**
- * @brief Vérifie si une chaîne est vide ou nulle.
- *
- * @param str La chaîne à vérifier.
- * @return 1 si vide, 0 sinon.
- */
-int is_empty(const char *str);
-
-#endif // UTILS_H
+#endif /* UTILS_H */

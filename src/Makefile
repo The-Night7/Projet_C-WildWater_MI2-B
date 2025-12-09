@@ -1,33 +1,24 @@
-# Makefile pour le projet C-WildWater
+CC      = gcc
+CFLAGS  = -Wall -Wextra -std=c99 -g
+LDFLAGS = -lm
 
-# Compilateur et options
-CC = gcc
-CFLAGS = -Wall -Wextra -Werror -std=c11 -g
+# Liste des sources du projet.  Si vous ajoutez d’autres modules, ajoutez
+# simplement les fichiers .c dans cette variable pour qu’ils soient compilés
+# automatiquement.
+SRCS    = main.c avl.c utils.c
+OBJS    = $(SRCS:.c=.o)
+TARGET  = c-wildwater
 
-# Fichiers sources et objets
-# On liste ici tous les fichiers .c nécessaires
-SRCS = main.c utils.c csv_io.c make_csv.c
-OBJS = $(SRCS:.c=.o)
-
-# Nom de l'exécutable final
-TARGET = c-wildwater
-
-# Règle par défaut
 all: $(TARGET)
 
-# Édition de liens (Linking)
 $(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) -o $(TARGET) $(OBJS)
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-# Compilation des fichiers objets (.c -> .o)
+# Règles de compilation des fichiers objets
 %.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) -c $<
 
-# Nettoyage des fichiers temporaires
 clean:
 	rm -f $(OBJS) $(TARGET)
 
-# Règle pour forcer la recompilation
-re: clean all
-
-.PHONY: all clean re
+.PHONY: all clean

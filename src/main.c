@@ -1,118 +1,187 @@
+/*
+ * main.c
+ *
+ * Point d’entrée du programme C‑WildWater.  Ce fichier lit un fichier de
+ * données représentant le réseau d’eau potable, agrège les informations
+ * demandées pour produire des histogrammes ou calcule les pertes en aval
+ * d’une usine.  L’algorithme de parcours utilise un arbre AVL pour
+ * stocker les usines triées et un graphe orienté pour représenter les
+ * relations entre elles.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
-#include "csv_io.h"
-#include "utils.h"
-#include "histogram.h"
-#include "histogram_modes.h"
+#include "avl.h"
 
-// Déclaration de la fonction de conversion (si elle existe dans utils.c ou make_csv.c)
-// Sinon, assure-toi que le header correspondant est inclus.
-
-void free_factory_data(void* data) {
-    free(data);
-}
-
-// --- Modification ici : Ajout du paramètre output_csv_file ---
-int generate_histogram(const char* input_csv_file, const char* output_csv_file, HistogramMode mode) {
-    printf("Génération d'un histogramme en mode: %s (%s)\n",
-           histogram_mode_to_string(mode),
-           get_histogram_mode_description(mode));
-
-    AVLNode* root = NULL;
-
-    printf("Analyse du fichier: %s\n", input_csv_file);
-
-    // Utilisation de l'ancien code pour traiter le fichier CSV
-    int numeric_mode = mode;
-    // Attention : process_input_csv dans csv_io.c a changé de signature dans tes fichiers précédents ?
-    // Si process_input_csv renvoie void et prend (filename, output), ce n'est pas compatible ici.
-    // Je suppose ici que tu utilises la version qui remplit l'AVL (basé sur ton code précédent).
-    // Si ta fonction process_input_csv sert juste à nettoyer le CSV, il faut adapter.
-
-    // HYPOTHÈSE : Tu as une fonction pour charger l'AVL.
-    // Si ce n'est pas le cas, et que process_input_csv sert juste au nettoyage,
-    // il faut appeler la fonction de chargement ici.
-    // Pour l'instant, je garde ta logique :
-    root = process_input_csv(input_csv_file, root, numeric_mode);
-
-    printf("Génération du rapport: %s\n", output_csv_file);
-
-    // Utilisation du fichier de sortie passé en argument
-    generate_output_csv(output_csv_file, root, numeric_mode);
-
-    // Affichage des statistiques (Code existant conservé)
-    int node_count = 0;
-    float total_value = 0.0f;
-
-    void count_nodes(AVLNode* node) {
-        if (node == NULL) return;
-        node_count++;
-        FactoryData* data = (FactoryData*)node->data;
-        if (mode == HISTO_MODE_MAX) total_value += data->capacity;
-        else if (mode == HISTO_MODE_SRC) total_value += data->load_volume;
-        else if (mode == HISTO_MODE_REAL) total_value += data->real_volume;
-        count_nodes(node->left);
-        count_nodes(node->right);
+// -----------------------------------------------------------------------------
+//  Fonction récursive de calcul des fuites (DFS)
+//
+// À partir d’un nœud `node` et d’un volume d’entrée `input_vol`, calcule
+// récursivement la quantité totale d’eau perdue en aval.  On répartit le
+// volume d’entrée équitablement entre tous les enfants, on applique le
+// pourcentage de fuite du tronçon et on additionne les pertes locales et
+// celles des sous‑arbres.
+static double solve_leaks(Station* node, double input_vol) {
+    if (!node || node->nb_children == 0) {
+        return 0.0;
     }
-
-    count_nodes(root);
-
-    printf("\nRésumé de l'analyse:\n");
-    printf("- Nombre d'installations: %d\n", node_count);
-    printf("- Total %s: %.2f\n",
-           mode == HISTO_MODE_MAX ? "des capacités" :
-           mode == HISTO_MODE_SRC ? "des volumes traités" :
-           "des volumes réels", total_value);
-
-    if (node_count > 0) {
-        printf("- Moyenne par installation: %.2f\n", total_value / node_count);
-    }
-
-    avl_destroy(root, free_factory_data);
-    return 0;
-}
-
-int main(int argc, char *argv[]) {
-    // 1. Vérification des arguments
-    // On attend : prog <input.csv> <output.csv> <command> <option>
-    if (argc < 5) {
-        fprintf(stderr, "Usage: %s <input.csv> <output.csv> <command> <option>\n", argv[0]);
-        return 1;
-    }
-
-    // 2. Récupération des variables (Une seule fois !)
-    char *input_file = argv[1];
-    char *output_file = argv[2];
-    char *command = argv[3]; // "histo" ou "leaks"
-    char *option = argv[4];  // "all", "max", etc. ou ID usine
-
-    printf("Starting C-WildWater analysis...\n");
-    printf("Input: %s\nOutput: %s\nCommand: %s\nOption: %s\n", input_file, output_file, command, option);
-
-    // 3. Aiguillage selon la commande
-    if (strcmp(command, "histo") == 0) {
-        HistogramMode mode;
-        if (strcmp(option, "max") == 0) mode = HISTO_MODE_MAX;
-        else if (strcmp(option, "src") == 0) mode = HISTO_MODE_SRC;
-        else if (strcmp(option, "real") == 0) mode = HISTO_MODE_REAL;
-        else if (strcmp(option, "all") == 0) mode = HISTO_MODE_ALL; // Si géré
-        else {
-            fprintf(stderr, "Mode inconnu: %s\n", option);
-            return 1;
+    double total_loss = 0.0;
+    double vol_per_pipe = input_vol / node->nb_children;
+    AdjNode* curr = node->children;
+    while (curr) {
+        // Perte sur ce tronçon
+        double pipe_loss = 0.0;
+        if (curr->leak_perc > 0) {
+            pipe_loss = vol_per_pipe * (curr->leak_perc / 100.0);
         }
-
-        // Appel avec le fichier de sortie explicite
-        generate_histogram(input_file, output_file, mode);
-
-    } else if (strcmp(command, "leaks") == 0) {
-        // calculate_leaks(input_file, option); // À décommenter si implémenté
-        printf("Mode leaks non encore activé complètement.\n");
-    } else {
-        fprintf(stderr, "Commande inconnue: %s\n", command);
-        return 1;
+        // Ce qui arrive réellement à l’enfant
+        double vol_arrived = vol_per_pipe - pipe_loss;
+        // Somme : perte locale + pertes des enfants
+        total_loss += pipe_loss + solve_leaks(curr->target, vol_arrived);
+        curr = curr->next;
     }
+    return total_loss;
+}
 
+// -----------------------------------------------------------------------------
+//  Main
+//
+// Le programme attend deux ou trois arguments sur la ligne de commande :
+//  * argv[1] : chemin vers le fichier de données (.dat ou .csv)
+//  * argv[2] : mode d’histogramme (« max », « src » ou « real »), ou
+//              identifiant d’une usine pour le calcul des fuites
+//
+// En mode histogramme, un fichier CSV est écrit sur la sortie standard.
+// En mode fuites, un nombre (double) représentant la perte en millions de
+// mètres cubes est affiché.
+int main(int argc, char** argv) {
+    if (argc != 3) {
+        return 1; // Code de retour > 0 si les arguments sont incorrects
+    }
+    FILE* file = fopen(argv[1], "r");
+    if (!file) {
+        return 2; // Impossible d’ouvrir le fichier d’entrée
+    }
+    char* arg_mode = argv[2];
+    int mode_histo = 0; // 1 = max, 2 = src, 3 = real
+    int mode_leaks = 0;
+    if (strcmp(arg_mode, "max") == 0) {
+        mode_histo = 1;
+    } else if (strcmp(arg_mode, "src") == 0) {
+        mode_histo = 2;
+    } else if (strcmp(arg_mode, "real") == 0) {
+        mode_histo = 3;
+    } else {
+        mode_leaks = 1; // Tout autre argument est considéré comme un identifiant d’usine
+    }
+    Station* root = NULL;
+    char line[1024];
+    long line_count = 0;
+    // Lecture ligne par ligne du fichier d’entrée
+    while (fgets(line, sizeof(line), file)) {
+        line_count++;
+        // Affichage sur stderr toutes les 200 000 lignes pour suivre la progression
+        if (line_count % 200000 == 0) {
+            fprintf(stderr, "Traitement en cours : %ld lignes lues...\r", line_count);
+            fflush(stderr);
+        }
+        // Nettoyage des retours chariot
+        line[strcspn(line, "\r\n")] = '\0';
+        if (strlen(line) < 2) {
+            continue;
+        }
+        // Découpage manuel de la ligne par points‑virgules
+        char* cols[5] = {NULL};
+        char* p = line;
+        int c = 0;
+        cols[c++] = p;
+        while (*p && c < 5) {
+            if (*p == ';') {
+                *p = '\0';
+                cols[c++] = p + 1;
+            }
+            p++;
+        }
+        // Remplacer les tirets ou chaînes vides par NULL
+        for (int i = 0; i < 5; i++) {
+            if (cols[i] && (strcmp(cols[i], "-") == 0 || strlen(cols[i]) == 0)) {
+                cols[i] = NULL;
+            }
+        }
+        // -----------------------------------------------------------------
+        // Mode « leaks » : construire le graphe et l’arbre des stations
+        // -----------------------------------------------------------------
+        if (mode_leaks) {
+            // Associer les identifiants (colonne 2 et 3) à des stations
+            if (cols[1]) {
+                if (!find_station(root, cols[1])) {
+                    root = insert_station(root, cols[1], 0, 0, 0);
+                }
+            }
+            if (cols[2]) {
+                if (!find_station(root, cols[2])) {
+                    root = insert_station(root, cols[2], 0, 0, 0);
+                }
+            }
+            // Création de la connexion parent→enfant
+            if (cols[1] && cols[2]) {
+                Station* pa = find_station(root, cols[1]);
+                Station* ch = find_station(root, cols[2]);
+                double leak = (cols[4]) ? atof(cols[4]) : 0.0;
+                add_connection(pa, ch, leak);
+            }
+            // Mise à jour de la capacité de l’usine (colonne 4) si la colonne 3 est vide
+            if (cols[1] && !cols[2] && cols[3]) {
+                Station* s = find_station(root, cols[1]);
+                if (s) {
+                    s->capacity = atol(cols[3]);
+                }
+            }
+        } else {
+            // -----------------------------------------------------------------
+            // Mode histogramme : agrégation selon le mode choisi
+            // -----------------------------------------------------------------
+            // Cas 1 : mode « max » : on récupère toutes les définitions d’usine
+            // Structure: [Ignoré];[ID Usine];[Vide];[Capacité];[Ignoré]
+            if (mode_histo == 1 && cols[1] && !cols[2] && cols[3]) {
+                root = insert_station(root, cols[1], atol(cols[3]), 0, 0);
+            }
+            // Cas 2 : modes « src » et « real » : on agrège les volumes des sources
+            // Structure: [Ignoré];[ID Source];[ID Usine];[Volume];[Fuite]
+            else if ((mode_histo == 2 || mode_histo == 3) && cols[2] && cols[3]) {
+                long vol = atol(cols[3]);
+                long reel = vol;
+                if (mode_histo == 3 && cols[4]) {
+                    double p_leak = atof(cols[4]);
+                    reel = (long)(vol * (1.0 - (p_leak / 100.0)));
+                }
+                root = insert_station(root, cols[2], 0, vol, reel);
+            }
+        }
+    }
+    fprintf(stderr, "Chargement terminé : %ld lignes.  Calcul en cours...\n", line_count);
+    fclose(file);
+    // Sorties finales
+    if (mode_leaks) {
+        Station* start = find_station(root, arg_mode);
+        if (!start) {
+            // Usine introuvable ⇒ renvoyer 0.  Le script interprète cela comme -1.
+            printf("0\n");
+        } else {
+            double leaks = solve_leaks(start, (double)start->capacity);
+            // Conversion : la capacité est en milliers de m³ dans le fichier,
+            // on renvoie les pertes en millions de m³.
+            printf("%f\n", leaks / 1000.0);
+        }
+    } else {
+        // Mode histogramme : écrire le CSV sur stdout
+        char mode_str[10];
+        if (mode_histo == 1) strcpy(mode_str, "max");
+        if (mode_histo == 2) strcpy(mode_str, "src");
+        if (mode_histo == 3) strcpy(mode_str, "real");
+        write_csv(root, stdout, mode_str);
+    }
+    free_tree(root);
     return 0;
 }
