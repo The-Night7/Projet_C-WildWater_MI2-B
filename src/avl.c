@@ -178,16 +178,16 @@ void free_tree(Station* node) {
 void write_csv(Station* node, FILE* output, char* mode) {
     if (!node) return;
     write_csv(node->left, output, mode);
-    long val = 0;
+    double val = 0;
     if (strcmp(mode, "max") == 0) {
-        val = node->capacity;
+        val = node->capacity/1000.0;
     } else if (strcmp(mode, "src") == 0) {
-        val = node->consumption;
+        val = node->consumption/1000.0;
     } else if (strcmp(mode, "real") == 0) {
-        val = node->real_qty;
+        val = node->real_qty/1000.0;
     }
     if (val > 0) {
-        fprintf(output, "%s;%ld\n", node->name, val);
+        fprintf(output, "%s;%.6f\n", node->name, val);
     }
     write_csv(node->right, output, mode);
 }

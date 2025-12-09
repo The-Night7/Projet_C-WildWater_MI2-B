@@ -142,9 +142,12 @@ EOF
             set key outside top center horizontal
             set offset 0, 0, graph 0.1, graph 0.05
             set style data histograms
+            set boxwidth 0.8 relative
             set style fill solid 1.0 border -1
             set datafile separator ';'
-            set ylabel 'M.m3'
+            set ylabel 'Volume (M.m3)'
+            set format y "%.4f"
+            set yrange [*:*]
             set xtics rotate by -90 font ',8'
             plot '$GP_SMALL' using 2:xtic(1) title 'Volume' lc rgb 'red'
 EOF
