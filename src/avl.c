@@ -97,6 +97,15 @@ Station* find_station(Station* node, char* name) {
 
 void add_connection(Station* parent, Station* child, double leak) {
     if (!parent || !child) return;
+    AdjNode* check = parent->children;
+    while (check) {
+        // Si on trouve déjà ce voisin dans la liste, on arrête.
+        // On compare les adresses mémoires (pointeurs) car l'AVL garantit l'unicité des noeuds.
+        if (check->target == child) {
+            return; // Déjà connecté, on ne fait rien
+        }
+        check = check->next;
+    }
     AdjNode* new_adj = (AdjNode*)malloc(sizeof(AdjNode));
     if (!new_adj) {
         fprintf(stderr, "Erreur: impossible d’allouer une nouvelle connexion\n");
@@ -174,7 +183,7 @@ void free_tree(Station* node) {
 // Parcourt l’AVL et écrit les données demandées dans un fichier CSV.  Le
 // paramètre `mode` doit être "max", "src" ou "real".  Pour chaque
 // station ayant une valeur strictement positive, on écrit une ligne
-// « identifiant;valeur » sur la sortie spécifiée.
+// « identifiant;valeur » sur la sortie spécifiée.
 void write_csv(Station* node, FILE* output, char* mode) {
     if (!node) return;
     write_csv(node->left, output, mode);

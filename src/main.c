@@ -37,7 +37,7 @@ static double solve_leaks(Station* node, double input_vol) {
         }
         // Ce qui arrive réellement à l’enfant
         double vol_arrived = vol_per_pipe - pipe_loss;
-        // Somme : perte locale + pertes des enfants
+        // Somme : perte locale + pertes des enfants
         total_loss += pipe_loss + solve_leaks(curr->target, vol_arrived);
         curr = curr->next;
     }
@@ -47,9 +47,9 @@ static double solve_leaks(Station* node, double input_vol) {
 // -----------------------------------------------------------------------------
 //  Main
 //
-// Le programme attend deux ou trois arguments sur la ligne de commande :
-//  * argv[1] : chemin vers le fichier de données (.dat ou .csv)
-//  * argv[2] : mode d’histogramme (« max », « src » ou « real »), ou
+// Le programme attend deux ou trois arguments sur la ligne de commande :
+//  * argv[1] : chemin vers le fichier de données (.dat ou .csv)
+//  * argv[2] : mode d’histogramme (« max », « src » ou « real »), ou
 //              identifiant d’une usine pour le calcul des fuites
 //
 // En mode histogramme, un fichier CSV est écrit sur la sortie standard.
@@ -57,12 +57,19 @@ static double solve_leaks(Station* node, double input_vol) {
 // mètres cubes est affiché.
 int main(int argc, char** argv) {
     if (argc != 3) {
-        return 1; // Code de retour > 0 si les arguments sont incorrects
+        return 1; // Code de retour > 0 si les arguments sont incorrects
     }
     FILE* file = fopen(argv[1], "r");
     if (!file) {
         return 2; // Impossible d’ouvrir le fichier d’entrée
     }
+
+    // --- OPTIMISATION I/O (Ajout pour WSL) ---
+    const size_t BUF_SIZE = 16 * 1024 * 1024; // 16 Mo
+    char* big_buffer = malloc(BUF_SIZE);
+    if (big_buffer) setvbuf(file, big_buffer, _IOFBF, BUF_SIZE);
+    // -----------------------------------------
+
     char* arg_mode = argv[2];
     int mode_histo = 0; // 1 = max, 2 = src, 3 = real
     int mode_leaks = 0;
@@ -81,12 +88,12 @@ int main(int argc, char** argv) {
     // Lecture ligne par ligne du fichier d’entrée
     while (fgets(line, sizeof(line), file)) {
         line_count++;
-        // Affichage sur stderr toutes les 200 000 lignes pour suivre la progression
+        // Affichage sur stderr toutes les 200 000 lignes pour suivre la progression
         if (line_count % 200000 == 0) {
             /*
              * Affichage périodique de la progression.  On imprime sur la
              * sortie d'erreur le nombre de lignes traitées toutes les
-             * 200 000 lignes.  L'utilisation d'\r permet de réécrire la
+             * 200 000 lignes.  L'utilisation d'\r permet de réécrire la
              * même ligne dans le terminal.
              */
             fprintf(stderr, "Lignes traitees : %ld...\r", line_count);
@@ -116,17 +123,19 @@ int main(int argc, char** argv) {
             }
         }
         // -----------------------------------------------------------------
-        // Mode « leaks » : construire le graphe et l’arbre des stations
+        // Mode « leaks » : construire le graphe et l’arbre des stations
         // -----------------------------------------------------------------
         if (mode_leaks) {
             // Associer les identifiants (colonne 2 et 3) à des stations
             if (cols[1]) {
-                if (!find_station(root, cols[1])) {
+                Station* temp = find_station(root, cols[1]); // Optimisation recherche
+                if (!temp) {
                     root = insert_station(root, cols[1], 0, 0, 0);
                 }
             }
             if (cols[2]) {
-                if (!find_station(root, cols[2])) {
+                Station* temp = find_station(root, cols[2]); // Optimisation recherche
+                if (!temp) {
                     root = insert_station(root, cols[2], 0, 0, 0);
                 }
             }
@@ -136,6 +145,15 @@ int main(int argc, char** argv) {
                 Station* ch = find_station(root, cols[2]);
                 double leak = (cols[4]) ? atof(cols[4]) : 0.0;
                 add_connection(pa, ch, leak);
+
+                // --- CORRECTIF : Calcul du Volume Réel Entrant ---
+                // Si l'enfant (ch) est l'usine cible, on cumule ce qu'elle reçoit
+                if (ch && cols[3] && strcmp(ch->name, arg_mode) == 0) {
+                    double vol = atof(cols[3]);
+                    // Volume entrant = Volume sortant du parent - Pertes tuyau
+                    ch->real_qty += (long)(vol * (1.0 - leak/100.0));
+                }
+                // -------------------------------------------------
             }
             // Mise à jour de la capacité de l’usine (colonne 4) si la colonne 3 est vide
             if (cols[1] && !cols[2] && cols[3]) {
@@ -146,14 +164,14 @@ int main(int argc, char** argv) {
             }
         } else {
             // -----------------------------------------------------------------
-            // Mode histogramme : agrégation selon le mode choisi
+            // Mode histogramme : agrégation selon le mode choisi
             // -----------------------------------------------------------------
-            // Cas 1 : mode « max » : on récupère toutes les définitions d’usine
+            // Cas 1 : mode « max » : on récupère toutes les définitions d’usine
             // Structure: [Ignoré];[ID Usine];[Vide];[Capacité];[Ignoré]
             if (mode_histo == 1 && cols[1] && !cols[2] && cols[3]) {
                 root = insert_station(root, cols[1], atol(cols[3]), 0, 0);
             }
-            // Cas 2 : modes « src » et « real » : on agrège les volumes des sources
+            // Cas 2 : modes « src » et « real » : on agrège les volumes des sources
             // Structure: [Ignoré];[ID Source];[ID Usine];[Volume];[Fuite]
             else if ((mode_histo == 2 || mode_histo == 3) && cols[2] && cols[3]) {
                 long vol = atol(cols[3]);
@@ -170,7 +188,7 @@ int main(int argc, char** argv) {
      * Ne pas afficher de message de fin de chargement sur stderr.  Le
      * fichier d'entrée peut compter plusieurs millions de lignes et un
      * message final n'est pas nécessaire pour l'utilisateur.  On
-     * conserve néanmoins l'affichage périodique (toutes les 200 000
+     * conserve néanmoins l'affichage périodique (toutes les 200 000
      * lignes) plus haut pour suivre la progression du traitement.
      */
     fclose(file);
@@ -179,22 +197,25 @@ int main(int argc, char** argv) {
         Station* start = find_station(root, arg_mode);
         if (!start) {
             /*
-             * Usine introuvable : renvoyer -1.  Cette convention est
+             * Usine introuvable : renvoyer -1.  Cette convention est
              * utilisée par le script pour distinguer une absence de
-             * résultat d'une usine ayant effectivement 0 M.m3 de pertes.
+             * résultat d'une usine ayant effectivement 0 M.m3 de pertes.
              */
             printf("-1\n");
         } else {
-            double leaks = solve_leaks(start, (double)start->capacity);
+            
+            //  Choix du volume de départ ---
+            double starting_volume = (start->real_qty > 0) ? (double)start->real_qty : (double)start->capacity;
+            double leaks = solve_leaks(start, starting_volume);
             /*
-             * Conversion : la capacité est exprimée en milliers de m³ dans
+             * Conversion : la capacité est exprimée en milliers de m³ dans
              * le fichier d'entrée.  On renvoie les pertes en millions de
              * m³ (division par 1000).
              */
-            printf("%f\n", leaks / 1000.0);
+            printf("%.6f\n", leaks / 1000.0);
         }
     } else {
-        // Mode histogramme : écrire le CSV sur stdout
+        // Mode histogramme : écrire le CSV sur stdout
         char mode_str[10];
         if (mode_histo == 1) strcpy(mode_str, "max");
         if (mode_histo == 2) strcpy(mode_str, "src");
