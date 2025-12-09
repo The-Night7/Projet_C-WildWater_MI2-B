@@ -83,7 +83,13 @@ int main(int argc, char** argv) {
         line_count++;
         // Affichage sur stderr toutes les 200 000 lignes pour suivre la progression
         if (line_count % 200000 == 0) {
-            fprintf(stderr, "Traitement en cours : %ld lignes lues...\r", line_count);
+            /*
+             * Affichage périodique de la progression.  On imprime sur la
+             * sortie d'erreur le nombre de lignes traitées toutes les
+             * 200 000 lignes.  L'utilisation d'\r permet de réécrire la
+             * même ligne dans le terminal.
+             */
+            fprintf(stderr, "Lignes traitees : %ld...\r", line_count);
             fflush(stderr);
         }
         // Nettoyage des retours chariot
@@ -160,18 +166,31 @@ int main(int argc, char** argv) {
             }
         }
     }
-    fprintf(stderr, "Chargement terminé : %ld lignes.  Calcul en cours...\n", line_count);
+    /*
+     * Ne pas afficher de message de fin de chargement sur stderr.  Le
+     * fichier d'entrée peut compter plusieurs millions de lignes et un
+     * message final n'est pas nécessaire pour l'utilisateur.  On
+     * conserve néanmoins l'affichage périodique (toutes les 200 000
+     * lignes) plus haut pour suivre la progression du traitement.
+     */
     fclose(file);
     // Sorties finales
     if (mode_leaks) {
         Station* start = find_station(root, arg_mode);
         if (!start) {
-            // Usine introuvable ⇒ renvoyer 0.  Le script interprète cela comme -1.
-            printf("0\n");
+            /*
+             * Usine introuvable : renvoyer -1.  Cette convention est
+             * utilisée par le script pour distinguer une absence de
+             * résultat d'une usine ayant effectivement 0 M.m3 de pertes.
+             */
+            printf("-1\n");
         } else {
             double leaks = solve_leaks(start, (double)start->capacity);
-            // Conversion : la capacité est en milliers de m³ dans le fichier,
-            // on renvoie les pertes en millions de m³.
+            /*
+             * Conversion : la capacité est exprimée en milliers de m³ dans
+             * le fichier d'entrée.  On renvoie les pertes en millions de
+             * m³ (division par 1000).
+             */
             printf("%f\n", leaks / 1000.0);
         }
     } else {
