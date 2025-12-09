@@ -1,63 +1,71 @@
+=====================================================================
+            PROJET C-WILDWATER - GUIDE D'UTILISATION
+=====================================================================
 
-### 1\. Préparation (Nettoyage et Compilation)
+1. PREPARATION (NETTOYAGE ET COMPILATION)
+---------------------------------------------------------------------
+Avant de lancer les analyses, il est imperatif de preparer l'environnement.
+Les commandes ci-dessous permettent de corriger les problemes de format 
+lies a Windows (fins de ligne), de donner les droits d'execution et 
+de compiler le programme C proprement.
 
-Lancez ce bloc pour corriger les fins de ligne (problème Windows), rendre le script exécutable et compiler le programme C proprement.
+Lancez ces commandes depuis la racine du projet :
 
-```bash
-# 1. Correction format Windows et permissions
-sed -i 's/\r$//' scripts/myScript.sh
-chmod +x scripts/myScript.sh
+    # 1. Correction format Windows et permissions du script
+    sed -i 's/\r$//' scripts/myScript.sh
+    chmod +x scripts/myScript.sh
 
-# 2. Compilation propre du programme C
-make -C src clean
-make -C src
-```
+    # 2. Compilation propre du programme C
+    make -C src clean
+    make -C src
+
 =====================================================================
           GUIDE : COMPRENDRE LES 3 MODES D'HISTOGRAMME
 =====================================================================
-
-Ce projet génère des graphiques basés sur 3 critères différents. 
-Voici à quoi correspond chaque mode lorsque vous lancez le script.
+Ce projet genere des graphiques bases sur 3 criteres differents. 
+Voici a quoi correspond chaque mode lorsque vous lancez le script.
 
 ---------------------------------------------------------------------
-1. MODE : max (Capacité Maximale)
+A. MODE : max (Capacite Maximale)
 ---------------------------------------------------------------------
 > Commande : ./scripts/myScript.sh histo max
-> Donnée   : Capacité maximale de traitement de l'usine (Théorique).
-> Détail   : C'est le volume maximum d'eau que l'usine est capable de 
-             traiter en une année si elle tourne à plein régime.
-> Unité    : Millions de m³ (M.m³)
+> Donnee   : Capacite maximale de traitement de l'usine (Theorique).
+> Detail   : C'est le volume maximum d'eau que l'usine est capable de 
+             traiter en une annee si elle tourne a plein regime.
+> Unite    : Millions de m3 (M.m3)
 
 ---------------------------------------------------------------------
-2. MODE : src (Volume Capté / Source)
+B. MODE : src (Volume Capte / Source)
 ---------------------------------------------------------------------
 > Commande : ./scripts/myScript.sh histo src
-> Donnée   : Volume total capté depuis les sources.
-> Détail   : C'est la somme de toute l'eau qui a été prélevée dans 
-             les sources (Springs) reliées à cette usine.
+> Donnee   : Volume total capte depuis les sources.
+> Detail   : C'est la somme de toute l'eau qui a ete prelevee dans 
+             les sources (Springs) reliees a cette usine.
              C'est la "consommation" brute des ressources naturelles.
-> Unité    : Millions de m³ (M.m³)
+> Unite    : Millions de m3 (M.m3)
 
 ---------------------------------------------------------------------
-3. MODE : real (Volume Réel Traité)
+C. MODE : real (Volume Reel Traite)
 ---------------------------------------------------------------------
 > Commande : ./scripts/myScript.sh histo real
-> Donnée   : Volume réellement traité par l'usine.
-> Détail   : C'est le volume capté (src) MOINS les fuites qui ont eu 
+> Donnee   : Volume reellement traite par l'usine.
+> Detail   : C'est le volume capte (src) MOINS les fuites qui ont eu 
              lieu dans les tuyaux entre la source et l'usine.
-             C'est donc la quantité d'eau qui entre vraiment dans l'usine.
-> Unité    : Millions de m³ (M.m³)
+             C'est donc la quantite d'eau qui entre vraiment dans l'usine.
+> Unite    : Millions de m3 (M.m3)
 
 =====================================================================
-          NOTE SUR LES FICHIERS DE SORTIE (IMAGES)
+            NOTE SUR LES FICHIERS DE SORTIE (IMAGES)
 =====================================================================
-Pour chaque mode, le script génère 2 images dans le dossier 'graphs/' :
+Pour chaque mode, le script genere des images dans le dossier 'graphs/'.
+
+Selon la configuration de votre script, vous obtiendrez :
 
 1. *_big.png   : Affiche le TOP 10 des plus grosses stations 
-                 (les géants du réseau).
+                 (les geants du reseau).
                  
 2. *_small.png : Affiche les 50 plus petites stations 
-                 (les petites unités locales).
+                 (les petites unites locales).
 
-Rappel Unité : 1 M.m³ = 1 000 000 de mètres cubes.
+Rappel Unite : 1 M.m3 = 1 000 000 de metres cubes.
 =====================================================================

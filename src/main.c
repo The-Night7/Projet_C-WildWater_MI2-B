@@ -33,42 +33,38 @@ double solve_leaks(Station* node, double input_vol) {
 
 // --- Main ---
 int main(int argc, char** argv) {
-    if (argc != 3) return 1; // [cite: 214] code retour > 0 si erreur
+    if (argc != 3) return 1; 
 
     FILE* file = fopen(argv[1], "r");
     if (!file) return 2;
 
     char* arg_mode = argv[2];
-    int mode_histo = 0; // 1=max, 2=src, 3=real
+    int mode_histo = 0; 
     int mode_leaks = 0; 
 
+    // Détection du mode
     if (strcmp(arg_mode, "max") == 0) mode_histo = 1;
     else if (strcmp(arg_mode, "src") == 0) mode_histo = 2;
     else if (strcmp(arg_mode, "real") == 0) mode_histo = 3;
-    else mode_leaks = 1; // Sinon c'est un ID d'usine
+    else mode_leaks = 1; // Si ce n'est pas un mot clé, c'est un ID d'usine
 
     Station* root = NULL;
     char line[1024];
+    long line_count = 0;
 
     // --- Lecture du fichier ---
-    // --- Lecture du fichier ---
-    long line_count = 0; // Compteur de lignes
-
     while (fgets(line, sizeof(line), file)) {
-        // --- AJOUT DEBUG : Affichage tous les 200 000 lignes ---
         line_count++;
+        // Feedback visuel utile pour les gros fichiers
         if (line_count % 200000 == 0) {
-            // \r permet de revenir au début de la ligne sans sauter de ligne
-            fprintf(stderr, "Traitement en cours : %ld lignes lues...\r", line_count);
-            fflush(stderr); // Force l'affichage immédiat
+            fprintf(stderr, "Lignes traitees : %ld...\r", line_count);
+            fflush(stderr);
         }
-        // -------------------------------------------------------
 
-        // Nettoyage sauts de ligne
-        line[strcspn(line, "\r\n")] = 0;
+        line[strcspn(line, "\r\n")] = 0; 
         if (strlen(line) < 2) continue;
 
-        // Parsing manuel
+        // Découpage manuel (plus robuste que strtok pour les champs vides ";;")
         char* cols[5] = {NULL};
         char* p = line;
         int c = 0;
@@ -82,24 +78,22 @@ int main(int argc, char** argv) {
             p++;
         }
 
-        // Nettoyage des "-"
+        // Remplacement des "-" par NULL pour simplifier les tests suivants
         for(int i=0; i<5; i++) {
             if (cols[i] && (strcmp(cols[i], "-") == 0 || strlen(cols[i]) == 0)) {
                 cols[i] = NULL;
             }
         }
 
-        // --- Logique LEAKS ---
+        // --- Logique de construction de l'arbre ---
         if (mode_leaks) {
-            if (cols[1]) {
-                if (!find_station(root, cols[1])) 
-                    root = insert_station(root, cols[1], 0, 0, 0);
-            }
-            if (cols[2]) {
-                if (!find_station(root, cols[2])) 
-                    root = insert_station(root, cols[2], 0, 0, 0);
-            }
+            // 1. S'assurer que les stations existent
+            if (cols[1] && !find_station(root, cols[1])) 
+                root = insert_station(root, cols[1], 0, 0, 0);
+            if (cols[2] && !find_station(root, cols[2])) 
+                root = insert_station(root, cols[2], 0, 0, 0);
 
+            // 2. Ajouter la connexion (Enfant et Fuite)
             if (cols[1] && cols[2]) {
                 Station* pa = find_station(root, cols[1]);
                 Station* ch = find_station(root, cols[2]);
@@ -107,25 +101,22 @@ int main(int argc, char** argv) {
                 add_connection(pa, ch, leak);
             }
 
-            // Capacité
+            // 3. Récupérer la capacité (si c'est la ligne de définition de l'usine)
             if (cols[1] && !cols[2] && cols[3]) {
                 Station* s = find_station(root, cols[1]);
                 if (s) s->capacity = atol(cols[3]);
             }
         }
-        // --- Logique HISTO ---
-        else {
-            // Mode Histo
-            // Cas 1 : Mode MAX (On cherche les lignes de définition des usines)
-            // Structure : [Ignoré];[ID Usine];[Vide];[Capacité];[Ignoré]
+        else { 
+            // Mode Histo (Optimisé : on ne stocke que ce qui est nécessaire)
+            
+            // Cas A : Définition d'une usine (pour récupérer la capacité MAX)
             if (mode_histo == 1 && cols[1] && !cols[2] && cols[3]) {
-                // On prend TOUT ce qui a ce format, peu importe le nom (Unit, Module, Plant...)
                 root = insert_station(root, cols[1], atol(cols[3]), 0, 0);
             }
             
-            // Cas 2 : Modes SRC et REAL (On cherche les liens Source -> Usine)
-            // Structure : [Ignoré];[ID Source];[ID Usine];[Volume];[Fuite]
-            // On vérifie juste que cols[2] (l'usine) existe et qu'on a un volume
+            // Cas B : Lien Source -> Usine (pour SRC et REAL)
+            // On vérifie que l'usine (col 2) existe dans la ligne
             else if ((mode_histo == 2 || mode_histo == 3) && cols[2] && cols[3]) {
                 long vol = atol(cols[3]);
                 long reel = vol;
@@ -135,38 +126,36 @@ int main(int argc, char** argv) {
                     reel = (long)(vol * (1.0 - (p_leak/100.0)));
                 }
                 
-                // On insère en utilisant l'ID de l'usine (cols[2])
+                // On insère ou met à jour l'usine
                 root = insert_station(root, cols[2], 0, vol, reel);
             }
         }
     }
-    // Nettoyage visuel fin de chargement
-    fprintf(stderr, "Chargement terminé : %ld lignes. Calcul en cours...\n", line_count);
     
-    fclose(file);
+    fclose(file); //  de fermer le fichier
 
-    // --- Sortie des résultats ---
+    // --- Sortie des résultats  ---
     if (mode_leaks) {
         Station* start = find_station(root, arg_mode);
         if (!start) {
-            // Usine introuvable [cite: 168] => retourne 0 (le script gère le -1)
-            printf("0\n"); 
+            // -1 pour indiquer "introuvable" 
+            printf("-1\n"); 
         } else {
-            // Calculer les fuites sur la base de la capacité de l'usine
+            // Calcul récursif des fuites
             double leaks = solve_leaks(start, (double)start->capacity);
             
-            // Le sujet demande en M.m3 (Millions m3). 
-            // Si capacity est en m3 : / 1,000,000
-            // Si capacity est en k.m3 : / 1,000
-            // Supposons k.m3 comme le reste du fichier :
+            // Conversion : k.m3 (fichier) -> M.m3 (demandé) = division par 1000
             printf("%f\n", leaks / 1000.0); 
         }
     } else {
-        // Mode Histo (max, src, real)
+        // Mode Histo : Génération du CSV
         char mode_str[10];
         if (mode_histo == 1) strcpy(mode_str, "max");
-        if (mode_histo == 2) strcpy(mode_str, "src");
-        if (mode_histo == 3) strcpy(mode_str, "real");
+        else if (mode_histo == 2) strcpy(mode_str, "src");
+        else if (mode_histo == 3) strcpy(mode_str, "real");
+        
+        // Entête optionnelle si ton script ne l'ajoute pas déjà
+        // fprintf(stdout, "Station;Volume\n"); 
         write_csv(root, stdout, mode_str);
     }
 
