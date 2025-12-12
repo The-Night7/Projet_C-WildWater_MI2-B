@@ -4,17 +4,17 @@
 # Script principal pour le projet C‑WildWater
 #
 # Ce script compile le projet si nécessaire et exécute le binaire «c‑wildwater»
-# pour générer des histogrammes ou calculer les pertes en aval d’une usine.
+# pour générer des histogrammes ou calculer les pertes en aval d'une usine.
 # Les histogrammes sont exportés au format CSV et peuvent être convertis en
-# graphiques PNG à l’aide de gnuplot.
+# graphiques PNG à l'aide de gnuplot.
 # -----------------------------------------------------------------------------
 
 ###############################################################################
-# Script d’analyse pour le projet C‑WildWater
+# Script d'analyse pour le projet C‑WildWater
 #
 # Ce script regroupe et unifie les fonctionnalités des deux scripts fournis
 # initialement (`myScript.sh` et `vags.bash`).  Il prend en charge la
-# compilation du projet, l’exécution en mode histogramme ou fuites, la
+# compilation du projet, l'exécution en mode histogramme ou fuites, la
 # génération de fichiers CSV et la création de graphiques via `gnuplot`.
 #
 # Utilisation:
@@ -24,7 +24,7 @@
 #    `data/c-wildwater_v3.dat` est utilisé.
 #  * `<mode>` doit être `histo` ou `leaks`.
 #  * En mode `histo`, `<argument>` est `max`, `src` ou `real`.
-#  * En mode `leaks`, `<argument>` est l’identifiant d’une usine.
+#  * En mode `leaks`, `<argument>` est l'identifiant d'une usine.
 ###############################################################################
 
 # Se placer à la racine du projet (le dossier parent du script)
@@ -36,13 +36,13 @@ SRC_DIR="src"
 GRAPH_DIR="$DATA_DIR/output_images"
 EXEC_MAIN="$SRC_DIR/c-wildwater"
 
-# Fichier d’entrée par défaut
+# Fichier d'entrée par défaut
 DEFAULT_INPUT="$DATA_DIR/c-wildwater_v3.dat"
 
 # Créer les répertoires nécessaires
 mkdir -p "$GRAPH_DIR" "$DATA_DIR"
 
-# Fonction d’affichage de l’aide
+# Fonction d'affichage de l'aide
 usage() {
     cat <<EOF
     Utilisation: $0 [<fichier_donnees>] <histo|leaks> <paramètre>
@@ -50,7 +50,7 @@ usage() {
       <fichier_donnees>  Chemin du fichier .dat ou .csv (optionnel).
                           Si absent, utilise $DEFAULT_INPUT.
       histo              Génère un histogramme (paramètre: max|src|real).
-      leaks              Calcule les pertes pour l’usine donnée.
+      leaks              Calcule les pertes pour l'usine donnée.
 
     Exemples:
       $0 histo max
@@ -61,7 +61,7 @@ EOF
     exit 1
 }
 
-# Vérification du nombre minimal d’arguments
+# Vérification du nombre minimal d'arguments
 if [ "$#" -lt 2 ]; then
     usage
 fi
@@ -158,16 +158,83 @@ EOF
     leaks)
         echo "--- Mode Fuites ($PARAM) ---"
         LEAK_FILE="$DATA_DIR/leaks.dat"
-        VAL=$("$EXEC_MAIN" "$DATAFILE" "$PARAM")
-        # Si le programme C renvoie -1, l'usine est introuvable.  Dans
-        # tous les autres cas, la valeur représente le volume de pertes en
-        # millions de m³.
-        if [ "$VAL" = "-1" ]; then
-            echo "Usine introuvable."
-            echo "$PARAM;-1" >> "$LEAK_FILE"
+        CACHE_FILE="$DATA_DIR/.leaks_cache.dat"
+
+        # Créer le fichier cache s'il n'existe pas
+        touch "$CACHE_FILE"
+
+        # Vérifier si l'usine a déjà été calculée (cache)
+        if [ -f "$CACHE_FILE" ]; then
+            CACHED_VAL=$(grep -F "$(echo "$PARAM" | sed 's/;/\\;/g')" "$CACHE_FILE" | tail -n1 | cut -d';' -f2)
+            if [ -n "$CACHED_VAL" ]; then
+                echo "Résultat en cache pour '$PARAM': $CACHED_VAL M.m3"
+                # Mise à jour du fichier de résultats si nécessaire
+                if ! grep -q "$(echo "$PARAM" | sed 's/;/\\;/g')" "$LEAK_FILE" 2>/dev/null; then
+                    echo "$PARAM;$CACHED_VAL" >> "$LEAK_FILE"
+                fi
+                exit 0
+            fi
+        fi
+
+        # Si plusieurs usines sont spécifiées (séparées par des virgules)
+        if [[ "$PARAM" == *","* ]]; then
+            echo "Traitement par lot de plusieurs usines..."
+            IFS=',' read -ra FACILITIES <<< "$PARAM"
+            for FAC in "${FACILITIES[@]}"; do
+                # Suppression des espaces avant/après
+                FAC=$(echo "$FAC" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
+                # Vérifier dans le cache
+                CACHED_VAL=$(grep -F "$(echo "$FAC" | sed 's/;/\\;/g')" "$CACHE_FILE" | tail -n1 | cut -d';' -f2)
+                if [ -n "$CACHED_VAL" ]; then
+                    echo "[$FAC] Résultat en cache: $CACHED_VAL M.m3"
+                    # Mise à jour du fichier de résultats si nécessaire
+                    if ! grep -q "$(echo "$FAC" | sed 's/;/\\;/g')" "$LEAK_FILE" 2>/dev/null; then
+                        echo "$FAC;$CACHED_VAL" >> "$LEAK_FILE"
+                    fi
+                    continue
+                fi
+
+                # Calcul des fuites pour cette usine
+                START_TIME=$SECONDS
+                VAL=$("$EXEC_MAIN" "$DATAFILE" "$FAC")
+                CALC_TIME=$((SECONDS - START_TIME))
+
+                # Traitement du résultat
+                if [ "$VAL" = "-1" ]; then
+                    echo "[$FAC] Usine introuvable (${CALC_TIME}s)"
+                    echo "$FAC;-1" >> "$LEAK_FILE"
+                    echo "$FAC;-1" >> "$CACHE_FILE"
+                else
+                    echo "[$FAC] Fuites: $VAL M.m3 (calculé en ${CALC_TIME}s)"
+                    echo "$FAC;$VAL" >> "$LEAK_FILE"
+                    echo "$FAC;$VAL" >> "$CACHE_FILE"
+                fi
+            done
         else
-            echo "Fuites: $VAL M.m3"
-            echo "$PARAM;$VAL" >> "$LEAK_FILE"
+            # Traitement d'une seule usine
+            START_TIME=$SECONDS
+            VAL=$("$EXEC_MAIN" "$DATAFILE" "$PARAM")
+            CALC_TIME=$((SECONDS - START_TIME))
+
+            # Si le programme C renvoie -1, l'usine est introuvable.  Dans
+            # tous les autres cas, la valeur représente le volume de pertes en
+            # millions de m³.
+            if [ "$VAL" = "-1" ]; then
+                echo "Usine introuvable (recherche en ${CALC_TIME}s)."
+                echo "$PARAM;-1" >> "$LEAK_FILE"
+                echo "$PARAM;-1" >> "$CACHE_FILE"
+            else
+                echo "Fuites: $VAL M.m3 (calculé en ${CALC_TIME}s)"
+                echo "$PARAM;$VAL" >> "$LEAK_FILE"
+                echo "$PARAM;$VAL" >> "$CACHE_FILE"
+            fi
+        fi
+
+        # Optimisation du fichier de fuites (élimination des doublons)
+        if [ -f "$LEAK_FILE" ]; then
+            sort -u -t';' -k1,1 "$LEAK_FILE" > "${LEAK_FILE}.tmp"
+            mv "${LEAK_FILE}.tmp" "$LEAK_FILE"
         fi
         ;;
     *)
