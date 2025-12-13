@@ -24,7 +24,7 @@
 #    `data/c-wildwater_v3.dat` est utilisé.
 #  * `<mode>` doit être `histo` ou `leaks`.
 #  * En mode `histo`, `<argument>` est `max`, `src` ou `real`.
-#  * En mode `leaks`, `<argument>` est l'identifiant d'une usine.
+#  * En mode `leaks`, `<argument>` est l'identifiant d'une usine ou `all`.
 ###############################################################################
 
 # Se placer à la racine du projet (le dossier parent du script)
@@ -50,13 +50,15 @@ usage() {
       <fichier_donnees>  Chemin du fichier .dat ou .csv (optionnel).
                           Si absent, utilise $DEFAULT_INPUT.
       histo              Génère un histogramme (paramètre: max|src|real).
-      leaks              Calcule les pertes pour l'usine donnée.
+      leaks              Calcule les pertes pour l'usine donnée ou toutes les usines.
+                          Paramètre: nom d'usine ou "all" pour toutes les usines.
 
     Exemples:
       $0 histo max
       $0 data/mon_fichier.dat histo src
       $0 leaks Facility\ complex\ #RH400057F
       $0 data/mon_fichier.dat leaks "Facility complex #RH400057F"
+      $0 leaks all
 EOF
     exit 1
 }
@@ -163,8 +165,54 @@ EOF
         # Créer le fichier cache s'il n'existe pas
         touch "$CACHE_FILE"
 
+        # Mode "all" pour calculer toutes les fuites
+        if [ "$PARAM" = "all" ]; then
+            echo "Calcul des fuites pour toutes les usines..."
+
+            # Créer un fichier temporaire pour stocker la liste des usines
+            FACILITIES_LIST="$DATA_DIR/.facilities_list.txt"
+
+            # Extraire la liste des usines du fichier de données si elle n'existe pas déjà
+            if [ ! -f "$FACILITIES_LIST" ] || [ ! -s "$FACILITIES_LIST" ]; then
+                echo "Extraction de la liste des usines (peut prendre du temps)..."
+                # Extraction des identifiants d'usines uniques (colonne 2 quand colonne 3 est vide)
+                awk -F';' '$3 == "-" && $2 != "-" {print $2}' "$DATAFILE" | sort -u > "$FACILITIES_LIST"
+                echo "Liste des usines extraite: $(wc -l < "$FACILITIES_LIST") usines trouvées."
+            fi
+
+            # Vérifier que la liste des usines n'est pas vide
+            if [ ! -s "$FACILITIES_LIST" ]; then
+                echo "Erreur: impossible d'extraire la liste des usines."
+                exit 1
+            fi
+
+            # Compiler le programme C avec l'option ALL_LEAKS si nécessaire
+            if ! grep -q "ALL_LEAKS" "$SRC_DIR/main.c" 2>/dev/null; then
+                echo "Le programme C ne supporte pas le mode 'all'. Veuillez implémenter cette fonctionnalité."
+                echo "Consultez les instructions pour ajouter la fonction 'all' avec AVL au programme C."
+                exit 1
+            fi
+
+            # Exécuter le programme avec l'option "all"
+            START_TIME=$SECONDS
+            "$EXEC_MAIN" "$DATAFILE" "all" > "$LEAK_FILE.new"
+            CALC_TIME=$((SECONDS - START_TIME))
+
+            # Vérifier que le fichier de résultat n'est pas vide
+            if [ ! -s "$LEAK_FILE.new" ]; then
+                echo "Erreur: aucun résultat généré."
+                exit 1
+            fi
+
+            # Mettre à jour le fichier de fuites et le cache
+            mv "$LEAK_FILE.new" "$LEAK_FILE"
+            cp "$LEAK_FILE" "$CACHE_FILE"
+
+            echo "Calcul terminé en ${CALC_TIME}s. Résultats enregistrés dans $LEAK_FILE"
+            echo "Nombre d'usines traitées: $(wc -l < "$LEAK_FILE")"
+
         # Vérifier si l'usine a déjà été calculée (cache)
-        if [ -f "$CACHE_FILE" ]; then
+        elif [ -f "$CACHE_FILE" ]; then
             CACHED_VAL=$(grep -F "$(echo "$PARAM" | sed 's/;/\\;/g')" "$CACHE_FILE" | tail -n1 | cut -d';' -f2)
             if [ -n "$CACHED_VAL" ]; then
                 echo "Résultat en cache pour '$PARAM': $CACHED_VAL M.m3"
@@ -176,7 +224,7 @@ EOF
             fi
         fi
 
-        # Si plusieurs usines sont spécifiées (séparées par des virgules)
+        # Si plusieurs usines sont spécifiées (séparées par des virgules) et ce n'est pas "all"
         if [[ "$PARAM" == *","* ]]; then
             echo "Traitement par lot de plusieurs usines..."
             IFS=',' read -ra FACILITIES <<< "$PARAM"
@@ -211,7 +259,8 @@ EOF
                     echo "$FAC;$VAL" >> "$CACHE_FILE"
                 fi
             done
-        else
+        # Traitement d'une seule usine (si ce n'est pas "all")
+        elif [ "$PARAM" != "all" ]; then
             # Traitement d'une seule usine
             START_TIME=$SECONDS
             VAL=$("$EXEC_MAIN" "$DATAFILE" "$PARAM")
