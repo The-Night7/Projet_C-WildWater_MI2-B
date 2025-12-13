@@ -96,6 +96,9 @@ if [ ! -x "$EXEC_MAIN" ]; then
     }
 fi
 
+# S'assurer que le binaire est exécutable
+chmod +x "$EXEC_MAIN" 2>/dev/null
+
 # Exécution selon le mode
 case "$COMMAND" in
     histo)
@@ -169,34 +172,23 @@ EOF
         if [ "$PARAM" = "all" ]; then
             echo "Calcul des fuites pour toutes les usines..."
 
-            # Créer un fichier temporaire pour stocker la liste des usines
-            FACILITIES_LIST="$DATA_DIR/.facilities_list.txt"
-
-            # Extraire la liste des usines du fichier de données si elle n'existe pas déjà
-            if [ ! -f "$FACILITIES_LIST" ] || [ ! -s "$FACILITIES_LIST" ]; then
-                echo "Extraction de la liste des usines (peut prendre du temps)..."
-                # Extraction des identifiants d'usines uniques (colonne 2 quand colonne 3 est vide)
-                awk -F';' '$3 == "-" && $2 != "-" {print $2}' "$DATAFILE" | sort -u > "$FACILITIES_LIST"
-                echo "Liste des usines extraite: $(wc -l < "$FACILITIES_LIST") usines trouvées."
-            fi
-
-            # Vérifier que la liste des usines n'est pas vide
-            if [ ! -s "$FACILITIES_LIST" ]; then
-                echo "Erreur: impossible d'extraire la liste des usines."
-                exit 1
-            fi
-
-            # Compiler le programme C avec l'option ALL_LEAKS si nécessaire
-            if ! grep -q "ALL_LEAKS" "$SRC_DIR/main.c" 2>/dev/null; then
+            # Vérifier que le programme C supporte le mode 'all'
+            if ! grep -q "define ALL_LEAKS" "$SRC_DIR/main.c" 2>/dev/null; then
                 echo "Le programme C ne supporte pas le mode 'all'. Veuillez implémenter cette fonctionnalité."
-                echo "Consultez les instructions pour ajouter la fonction 'all' avec AVL au programme C."
                 exit 1
             fi
 
             # Exécuter le programme avec l'option "all"
             START_TIME=$SECONDS
-            "$EXEC_MAIN" "$DATAFILE" "all" > "$LEAK_FILE.new"
+            echo "Exécution de: $EXEC_MAIN $DATAFILE all"
+            "$EXEC_MAIN" "$DATAFILE" "all" > "$LEAK_FILE.new" 2>/dev/null
+            RESULT_CODE=$?
             CALC_TIME=$((SECONDS - START_TIME))
+
+            if [ $RESULT_CODE -ne 0 ]; then
+                echo "Erreur: le programme a échoué avec le code de retour $RESULT_CODE."
+                exit 1
+            fi
 
             # Vérifier que le fichier de résultat n'est pas vide
             if [ ! -s "$LEAK_FILE.new" ]; then
