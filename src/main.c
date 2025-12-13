@@ -1,10 +1,10 @@
 /*
  * main.c
  *
- * Point d’entrée du programme C‑WildWater.  Ce fichier lit un fichier de
- * données représentant le réseau d’eau potable, agrège les informations
+ * Point d'entrée du programme C‑WildWater.  Ce fichier lit un fichier de
+ * données représentant le réseau d'eau potable, agrège les informations
  * demandées pour produire des histogrammes ou calcule les pertes en aval
- * d’une usine.  L’algorithme de parcours utilise un arbre AVL pour
+ * d'une usine.  L'algorithme de parcours utilise un arbre AVL pour
  * stocker les usines triées et un graphe orienté pour représenter les
  * relations entre elles.
  */
@@ -14,12 +14,15 @@
 #include <string.h>
 #include "avl.h"
 
+// Définition pour le mode "all"
+#define ALL_LEAKS
+
 // -----------------------------------------------------------------------------
 //  Fonction récursive de calcul des fuites (DFS)
 //
-// À partir d’un nœud `node` et d’un volume d’entrée `input_vol`, calcule
-// récursivement la quantité totale d’eau perdue en aval.  On répartit le
-// volume d’entrée équitablement entre tous les enfants, on applique le
+// À partir d'un nœud `node` et d'un volume d'entrée `input_vol`, calcule
+// récursivement la quantité totale d'eau perdue en aval.  On répartit le
+// volume d'entrée équitablement entre tous les enfants, on applique le
 // pourcentage de fuite du tronçon et on additionne les pertes locales et
 // celles des sous‑arbres.
 static double solve_leaks(Station* node, double input_vol) {
@@ -35,7 +38,7 @@ static double solve_leaks(Station* node, double input_vol) {
         if (curr->leak_perc > 0) {
             pipe_loss = vol_per_pipe * (curr->leak_perc / 100.0);
         }
-        // Ce qui arrive réellement à l’enfant
+        // Ce qui arrive réellement à l'enfant
         double vol_arrived = vol_per_pipe - pipe_loss;
         // Somme : perte locale + pertes des enfants
         total_loss += pipe_loss + solve_leaks(curr->target, vol_arrived);
@@ -45,23 +48,57 @@ static double solve_leaks(Station* node, double input_vol) {
 }
 
 // -----------------------------------------------------------------------------
+// Fonction pour calculer les fuites de toutes les usines
+//
+// Cette fonction parcourt l'arbre AVL et calcule les fuites pour chaque usine
+// qui a une capacité ou un volume réel entrant. Les résultats sont écrits
+// dans un fichier au format "nom_usine;valeur_fuite".
+static void calculate_all_leaks(Station* node, FILE* output) {
+    if (!node) return;
+
+    // Traitement récursif (parcours infixe)
+    calculate_all_leaks(node->left, output);
+
+    // Calcul des fuites pour cette usine si elle a une capacité ou un volume réel
+    double starting_volume = (node->real_qty > 0) ? (double)node->real_qty : (double)node->capacity;
+
+    // Ne traiter que les usines ayant un volume de départ ou des enfants
+    if (starting_volume > 0 || node->nb_children > 0) {
+        double leaks = solve_leaks(node, starting_volume);
+        // Conversion en millions de m³ (division par 1000)
+        fprintf(output, "%s;%.6f\n", node->name, leaks / 1000.0);
+    }
+
+    calculate_all_leaks(node->right, output);
+}
+
+// -----------------------------------------------------------------------------
+// Fonction pour compter le nombre d'usines dans l'arbre
+static int count_stations(Station* node) {
+    if (!node) return 0;
+    return 1 + count_stations(node->left) + count_stations(node->right);
+}
+
+// -----------------------------------------------------------------------------
 //  Main
 //
 // Le programme attend deux ou trois arguments sur la ligne de commande :
 //  * argv[1] : chemin vers le fichier de données (.dat ou .csv)
-//  * argv[2] : mode d’histogramme (« max », « src » ou « real »), ou
-//              identifiant d’une usine pour le calcul des fuites
+//  * argv[2] : mode d'histogramme (« max », « src » ou « real »), ou
+//              identifiant d'une usine pour le calcul des fuites, ou
+//              "all" pour calculer les fuites de toutes les usines
 //
 // En mode histogramme, un fichier CSV est écrit sur la sortie standard.
 // En mode fuites, un nombre (double) représentant la perte en millions de
 // mètres cubes est affiché.
+// En mode "all", un fichier CSV avec toutes les usines et leurs fuites est généré.
 int main(int argc, char** argv) {
     if (argc != 3) {
         return 1; // Code de retour > 0 si les arguments sont incorrects
     }
     FILE* file = fopen(argv[1], "r");
     if (!file) {
-        return 2; // Impossible d’ouvrir le fichier d’entrée
+        return 2; // Impossible d'ouvrir le fichier d'entrée
     }
 
     // --- OPTIMISATION I/O (Ajout pour WSL) ---
@@ -73,19 +110,27 @@ int main(int argc, char** argv) {
     char* arg_mode = argv[2];
     int mode_histo = 0; // 1 = max, 2 = src, 3 = real
     int mode_leaks = 0;
+    int mode_all_leaks = 0;
+
     if (strcmp(arg_mode, "max") == 0) {
         mode_histo = 1;
     } else if (strcmp(arg_mode, "src") == 0) {
         mode_histo = 2;
     } else if (strcmp(arg_mode, "real") == 0) {
         mode_histo = 3;
+    } else if (strcmp(arg_mode, "all") == 0) {
+        mode_all_leaks = 1;
     } else {
-        mode_leaks = 1; // Tout autre argument est considéré comme un identifiant d’usine
+        mode_leaks = 1; // Tout autre argument est considéré comme un identifiant d'usine
     }
+
     Station* root = NULL;
     char line[1024];
     long line_count = 0;
-    // Lecture ligne par ligne du fichier d’entrée
+    long station_count = 0;
+    long capacity_count = 0;
+
+    // Lecture ligne par ligne du fichier d'entrée
     while (fgets(line, sizeof(line), file)) {
         line_count++;
         // Affichage sur stderr toutes les 200 000 lignes pour suivre la progression
@@ -123,20 +168,22 @@ int main(int argc, char** argv) {
             }
         }
         // -----------------------------------------------------------------
-        // Mode « leaks » : construire le graphe et l’arbre des stations
+        // Mode « leaks » ou « all » : construire le graphe et l'arbre des stations
         // -----------------------------------------------------------------
-        if (mode_leaks) {
+        if (mode_leaks || mode_all_leaks) {
             // Associer les identifiants (colonne 2 et 3) à des stations
             if (cols[1]) {
                 Station* temp = find_station(root, cols[1]); // Optimisation recherche
                 if (!temp) {
                     root = insert_station(root, cols[1], 0, 0, 0);
+                    station_count++;
                 }
             }
             if (cols[2]) {
                 Station* temp = find_station(root, cols[2]); // Optimisation recherche
                 if (!temp) {
                     root = insert_station(root, cols[2], 0, 0, 0);
+                    station_count++;
                 }
             }
             // Création de la connexion parent→enfant
@@ -147,26 +194,35 @@ int main(int argc, char** argv) {
                 add_connection(pa, ch, leak);
 
                 // --- CORRECTIF : Calcul du Volume Réel Entrant ---
-                // Si l'enfant (ch) est l'usine cible, on cumule ce qu'elle reçoit
-                if (ch && cols[3] && strcmp(ch->name, arg_mode) == 0) {
+                // En mode "all", on calcule le volume réel entrant pour toutes les usines
+                if (cols[3]) {
                     double vol = atof(cols[3]);
                     // Volume entrant = Volume sortant du parent - Pertes tuyau
-                    ch->real_qty += (long)(vol * (1.0 - leak/100.0));
+                    double real_vol = vol * (1.0 - leak/100.0);
+
+                    if (mode_all_leaks && ch) {
+                        ch->real_qty += (long)real_vol;
+                    }
+                // Si l'enfant (ch) est l'usine cible, on cumule ce qu'elle reçoit
+                    else if (mode_leaks && ch && strcmp(ch->name, arg_mode) == 0) {
+                        ch->real_qty += (long)real_vol;
                 }
+            }
                 // -------------------------------------------------
             }
-            // Mise à jour de la capacité de l’usine (colonne 4) si la colonne 3 est vide
+            // Mise à jour de la capacité de l'usine (colonne 4) si la colonne 3 est vide
             if (cols[1] && !cols[2] && cols[3]) {
                 Station* s = find_station(root, cols[1]);
                 if (s) {
                     s->capacity = atol(cols[3]);
+                    capacity_count++;
                 }
             }
         } else {
             // -----------------------------------------------------------------
             // Mode histogramme : agrégation selon le mode choisi
             // -----------------------------------------------------------------
-            // Cas 1 : mode « max » : on récupère toutes les définitions d’usine
+            // Cas 1 : mode « max » : on récupère toutes les définitions d'usine
             // Structure: [Ignoré];[ID Usine];[Vide];[Capacité];[Ignoré]
             if (mode_histo == 1 && cols[1] && !cols[2] && cols[3]) {
                 root = insert_station(root, cols[1], atol(cols[3]), 0, 0);
@@ -184,14 +240,16 @@ int main(int argc, char** argv) {
             }
         }
     }
-    /*
-     * Ne pas afficher de message de fin de chargement sur stderr.  Le
-     * fichier d'entrée peut compter plusieurs millions de lignes et un
-     * message final n'est pas nécessaire pour l'utilisateur.  On
-     * conserve néanmoins l'affichage périodique (toutes les 200 000
-     * lignes) plus haut pour suivre la progression du traitement.
-     */
+
+    // Afficher des statistiques en mode "all"
+    if (mode_all_leaks) {
+        fprintf(stderr, "Lignes traitées: %ld\n", line_count);
+        fprintf(stderr, "Stations créées: %ld\n", station_count);
+        fprintf(stderr, "Capacités définies: %ld\n", capacity_count);
+        fprintf(stderr, "Nombre total de stations dans l'AVL: %d\n", count_stations(root));
+    }
     fclose(file);
+
     // Sorties finales
     if (mode_leaks) {
         Station* start = find_station(root, arg_mode);
@@ -203,7 +261,6 @@ int main(int argc, char** argv) {
              */
             printf("-1\n");
         } else {
-            
             //  Choix du volume de départ ---
             double starting_volume = (start->real_qty > 0) ? (double)start->real_qty : (double)start->capacity;
             double leaks = solve_leaks(start, starting_volume);
@@ -214,6 +271,9 @@ int main(int argc, char** argv) {
              */
             printf("%.6f\n", leaks / 1000.0);
         }
+    } else if (mode_all_leaks) {
+        // Mode "all" : calculer les fuites pour toutes les usines
+        calculate_all_leaks(root, stdout);
     } else {
         // Mode histogramme : écrire le CSV sur stdout
         char mode_str[10];
@@ -222,6 +282,10 @@ int main(int argc, char** argv) {
         if (mode_histo == 3) strcpy(mode_str, "real");
         write_csv(root, stdout, mode_str);
     }
+
+    // Libération de la mémoire
     free_tree(root);
+    if (big_buffer) free(big_buffer);
+
     return 0;
 }
