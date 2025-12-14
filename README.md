@@ -41,3 +41,15 @@ Ce projet est conçu pour fonctionner sous un environnement **Linux** (ou WSL).
 ```bash
 sudo apt update
 sudo apt install build-essential gnuplot make
+```
+##Utilisation :
+```bash
+./scripts/myScript.sh histo max    # Capacité maximale
+./scripts/myScript.sh histo src    # Volume sources
+./scripts/myScript.sh histo real   # Volume réel traité
+./scripts/myScript.sh histo all
+```
+**Exemple leaks**
+```bash
+./scripts/myScript.sh leaks "Facility complex #RH400057F"
+```
