@@ -33,15 +33,16 @@ cd "$(dirname "$0")/.." || exit 1
 # Répertoires utilisés
 DATA_DIR="data"
 SRC_DIR="src"
+BIN_DIR="src/bin"
 GRAPH_DIR="$DATA_DIR/output_images"
-EXEC_MAIN="$SRC_DIR/c-wildwater"
+EXEC_MAIN="$BIN_DIR/c-wildwater"
 LOG_FILE="$DATA_DIR/processing.log"
 
 # Fichier d'entrée par défaut
 DEFAULT_INPUT="$DATA_DIR/c-wildwater_v3.dat"
 
 # Créer les répertoires nécessaires
-mkdir -p "$GRAPH_DIR" "$DATA_DIR"
+mkdir -p "$GRAPH_DIR" "$DATA_DIR" "$BIN_DIR"
 
 # Fonction d'affichage de l'aide
 usage() {
@@ -292,7 +293,7 @@ EOF
                         log_progress "Mise à jour du fichier de résultats avec la valeur en cache"
                     fi
                     continue
-                }
+                fi
 
                 # Calcul des fuites pour cette usine
                 START_TIME=$SECONDS
@@ -340,6 +341,10 @@ EOF
             mv "${LEAK_FILE}.tmp" "$LEAK_FILE"
             log_progress "Fichier de fuites optimisé: $(wc -l < "$LEAK_FILE") lignes"
         fi
+
+        # Après l’optimisation du fichier de fuites
+        awk -F';' '{if (NF==2) s+=$2} END {printf "Volume total de fuites : %.6f M.m3\n", s}' data/leaks.dat
+
         ;;
     *)
         log_progress "Erreur: commande inconnue ('$COMMAND').  Utilisez 'histo' ou 'leaks'."

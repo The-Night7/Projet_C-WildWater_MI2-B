@@ -48,23 +48,41 @@ static char* trim_whitespace(char* str) {
 // volume d'entrée équitablement entre tous les enfants, on applique le
 // pourcentage de fuite du tronçon et on additionne les pertes locales et
 // celles des sous‑arbres.
-static double solve_leaks(Station* node, double input_vol) {
-    if (!node || node->nb_children == 0) {
+/*
+ * Calcule récursivement les pertes d'eau à partir d'un nœud `node` pour
+ * une usine donnée.  Seules les connexions dont le champ `factory` est
+ * soit NULL (cas des tronçons source→usine) soit égal à l'usine `u`
+ * sont parcourues.  Le volume d'entrée est réparti équitablement
+ * entre toutes les connexions éligibles.
+ */
+static double solve_leaks(Station* node, double input_vol, Station* u) {
+    if (!node) {
+        return 0.0;
+    }
+    /* Compter le nombre de connexions sortantes correspondant à cette usine */
+    int count = 0;
+    AdjNode* curr = node->children;
+    while (curr) {
+        if (curr->factory == NULL || curr->factory == u) {
+            count++;
+        }
+        curr = curr->next;
+    }
+    if (count == 0) {
         return 0.0;
     }
     double total_loss = 0.0;
-    double vol_per_pipe = input_vol / node->nb_children;
-    AdjNode* curr = node->children;
+    double vol_per_pipe = input_vol / count;
+    curr = node->children;
     while (curr) {
-        // Perte sur ce tronçon
-        double pipe_loss = 0.0;
-        if (curr->leak_perc > 0) {
-            pipe_loss = vol_per_pipe * (curr->leak_perc / 100.0);
+        if (curr->factory == NULL || curr->factory == u) {
+            double pipe_loss = 0.0;
+            if (curr->leak_perc > 0) {
+                pipe_loss = vol_per_pipe * (curr->leak_perc / 100.0);
+            }
+            double vol_arrived = vol_per_pipe - pipe_loss;
+            total_loss += pipe_loss + solve_leaks(curr->target, vol_arrived, u);
         }
-        // Ce qui arrive réellement à l'enfant
-        double vol_arrived = vol_per_pipe - pipe_loss;
-        // Somme : perte locale + pertes des enfants
-        total_loss += pipe_loss + solve_leaks(curr->target, vol_arrived);
         curr = curr->next;
     }
     return total_loss;
@@ -94,7 +112,7 @@ static void calculate_all_leaks(Station* node, FILE* output) {
     double starting_volume = (double)node->real_qty;
 
     if (starting_volume > 0) {
-        double leaks = solve_leaks(node, starting_volume);
+        double leaks = solve_leaks(node, starting_volume, node);
         /* Conversion en millions de m³ (division par 1000) */
         fprintf(output, "%s;%.6f\n", node->name, leaks / 1000.0);
     }
@@ -163,17 +181,21 @@ int main(int argc, char** argv) {
     // Lecture ligne par ligne du fichier d'entrée
     while (fgets(line, sizeof(line), file)) {
         line_count++;
-        // Affichage sur stderr toutes les 200 000 lignes pour suivre la progression
-        if (line_count % 200000 == 0) {
-            /*
-             * Affichage périodique de la progression.  On imprime sur la
-             * sortie d'erreur le nombre de lignes traitées toutes les
-             * 200 000 lignes.  L'utilisation d'\r permet de réécrire la
-             * même ligne dans le terminal.
-             */
-            fprintf(stderr, "Lignes traitees : %ld...\r", line_count);
-            fflush(stderr);
-        }
+        // Affichage sur stderr toutes les 5 lignes pour suivre la progression
+		if (line_count % 5 == 0) {
+    		/*
+     		* Affichage périodique de la progression.
+    		* On imprime sur la sortie d'erreur le nombre de lignes
+     		* traitées toutes les 5 lignes. L'utilisation d'\r permet de
+     		* réécrire la même ligne dans le terminal, évitant d'inonder
+     		* la sortie de messages. Ce comportement permet un suivi
+     		* dynamique des lignes traitées lors du traitement de petits
+     		* fichiers.
+     		*/
+    		fprintf(stderr, "Lignes traitees : %ld...\r", line_count);
+    		fflush(stderr);
+		}
+
         // Nettoyage des retours chariot
         line[strcspn(line, "\r\n")] = '\0';
         if (strlen(line) < 2) {
@@ -238,26 +260,48 @@ int main(int argc, char** argv) {
                 Station* pa = find_station(root, cols[1]);
                 Station* ch = find_station(root, cols[2]);
                 double leak = (cols[4] ? atof(cols[4]) : 0.0);
-                add_connection(pa, ch, leak);
 
                 /*
-                 * Mise à jour du volume réel entrant pour l’acteur aval.
-                 * La colonne #4 (index 3) peut contenir un volume sortant
-                 * (uniquement dans les lignes SOURCE→USINE).  Ce volume est
-                 * exprimé en milliers de m³.  Pour calculer le volume réel
-                 * qui arrive effectivement à l’aval, on applique le
-                 * pourcentage de fuite indiqué dans la colonne #5.  Les
-                 * volumes sont cumulés dans le champ real_qty de l’acteur
-                 * aval si nécessaire.
+                 * Détermination de l'usine associée à ce tronçon.  La
+                 * colonne #1 contient l'identifiant de l'usine qui a traité
+                 * l'eau (pour les tronçons stockage→jonction,
+                 * jonction→raccordement et raccordement→usager).  Si cette
+                 * colonne est vide (source→usine ou usine→stockage),
+                 * l'usine est implicite : l'acteur aval pour source→usine,
+                 * et l'acteur amont pour usine→stockage.
                  */
+                Station* factory = NULL;
+                if (cols[0]) {
+                    factory = find_station(root, cols[0]);
+                    if (!factory) {
+                        /* Insérer cette usine si elle n'existe pas encore */
+                        root = insert_station(root, cols[0], 0, 0, 0);
+                        factory = find_station(root, cols[0]);
+                    }
+                } else {
+                    /*
+                     * Cas où la colonne #1 est vide (NULL) : il peut s'agir
+                     * d'une ligne source→usine ou d'une ligne usine→stockage.
+                     * On fait la distinction grâce à la colonne #4 :
+                     *  - Si cols[3] est non NULL, c'est une source→usine (vol capté),
+                     *    l'usine est donc l'acteur aval (ch).
+                     *  - Sinon c'est une usine→stockage, l'usine est l'acteur amont (pa).
+                     */
+                    if (cols[3]) {
+                        factory = ch;
+                    } else {
+                        factory = pa;
+                    }
+                }
+                add_connection(pa, ch, leak, factory);
+
                 /*
-                 * Mise à jour du volume réel entrant : ce volume (colonne #4) ne
-                 * doit être pris en compte que pour les tronçons « source →
-                 * usine ».  Dans ces lignes, la colonne #1 est vide (notée
-                 * '-' dans le fichier CSV, transformé en NULL après
-                 * nettoyage).  Pour les autres types de tronçons (usine→
-                 * stockage, stockage→jonction, etc.), la colonne #4 ne
-                 * représente pas un volume capté et ne doit donc pas être
+                 * Mise à jour du volume réel entrant : ce volume (colonne #4)
+                 * n'est pris en compte que pour les tronçons source→usine.
+                 * Dans ces lignes, la colonne #1 est vide (NULL).  Pour les
+                 * autres types de tronçons (usine→stockage, stockage→jonction,
+                 * jonction→raccordement, raccordement→usager), la colonne #4
+                 * ne représente pas un volume capté et ne doit donc pas être
                  * utilisée pour mettre à jour real_qty.  De cette manière,
                  * seules les usines reçoivent un volume réel.
                  */
@@ -341,7 +385,7 @@ int main(int argc, char** argv) {
             double starting_volume = (double)start->real_qty;
             double leaks = 0.0;
             if (starting_volume > 0) {
-                leaks = solve_leaks(start, starting_volume);
+                leaks = solve_leaks(start, starting_volume, start);
             }
             /* Conversion en millions de m³ */
             printf("%.6f\n", leaks / 1000.0);
