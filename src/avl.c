@@ -184,19 +184,34 @@ void free_tree(Station* node) {
 // paramètre `mode` doit être "max", "src" ou "real".  Pour chaque
 // station ayant une valeur strictement positive, on écrit une ligne
 // « identifiant;valeur » sur la sortie spécifiée.
+// Parcourt l’AVL et écrit les données demandées dans un fichier CSV.
 void write_csv(Station* node, FILE* output, char* mode) {
     if (!node) return;
     write_csv(node->left, output, mode);
-    double val = 0;
-    if (strcmp(mode, "max") == 0) {
-        val = node->capacity/1000.0;
-    } else if (strcmp(mode, "src") == 0) {
-        val = node->consumption/1000.0;
-    } else if (strcmp(mode, "real") == 0) {
-        val = node->real_qty/1000.0;
-    }
-    if (val > 0) {
-        fprintf(output, "%s;%.6f\n", node->name, val);
+
+    if (strcmp(mode, "all") == 0) {
+        // Mode BONUS : on écrit les 3 valeurs (Capacité, Source, Réel)
+        // On n'affiche que si l'usine a au moins une donnée pertinente
+        if (node->capacity > 0 || node->consumption > 0 || node->real_qty > 0) {
+            fprintf(output, "%s;%.6f;%.6f;%.6f\n", 
+                    node->name, 
+                    node->capacity/1000.0, 
+                    node->consumption/1000.0, 
+                    node->real_qty/1000.0);
+        }
+    } else {
+        // Modes classiques (max, src, real)
+        double val = 0;
+        if (strcmp(mode, "max") == 0) {
+            val = node->capacity/1000.0;
+        } else if (strcmp(mode, "src") == 0) {
+            val = node->consumption/1000.0;
+        } else if (strcmp(mode, "real") == 0) {
+            val = node->real_qty/1000.0;
+        }
+        if (val > 0) {
+            fprintf(output, "%s;%.6f\n", node->name, val);
+        }
     }
     write_csv(node->right, output, mode);
 }
