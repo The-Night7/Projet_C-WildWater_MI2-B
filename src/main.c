@@ -250,24 +250,23 @@ int main(int argc, char** argv) {
                  * volumes sont cumulés dans le champ real_qty de l’acteur
                  * aval si nécessaire.
                  */
-                if (cols[3]) {
+                /*
+                 * Mise à jour du volume réel entrant : ce volume (colonne #4) ne
+                 * doit être pris en compte que pour les tronçons « source →
+                 * usine ».  Dans ces lignes, la colonne #1 est vide (notée
+                 * '-' dans le fichier CSV, transformé en NULL après
+                 * nettoyage).  Pour les autres types de tronçons (usine→
+                 * stockage, stockage→jonction, etc.), la colonne #4 ne
+                 * représente pas un volume capté et ne doit donc pas être
+                 * utilisée pour mettre à jour real_qty.  De cette manière,
+                 * seules les usines reçoivent un volume réel.
+                 */
+                if (cols[3] && !cols[0]) {
                     double vol = atof(cols[3]);
                     double real_vol = vol * (1.0 - leak / 100.0);
                     if (mode_all_leaks && ch) {
-                        /*
-                         * En mode "all", on cumule le volume réel pour toutes
-                         * les usines afin de déterminer le volume initial à
-                         * utiliser lors du calcul des fuites en aval.
-                         */
                         ch->real_qty += (long)real_vol;
                     } else if (mode_leaks && ch && strcmp(ch->name, arg_mode) == 0) {
-                        /*
-                         * En mode "leaks" (un identifiant d’usine précis), on
-                         * cumule uniquement les volumes arrivant dans l’usine
-                         * cible.  Ceci évite de stocker des volumes pour
-                         * d’autres usines lorsque l’utilisateur ne souhaite
-                         * calculer les pertes que pour une usine donnée.
-                         */
                         ch->real_qty += (long)real_vol;
                     }
                 }
