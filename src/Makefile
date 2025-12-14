@@ -9,7 +9,7 @@ LDFLAGS = -lm
 # Liste des sources du projet.  Si vous ajoutez d’autres modules, ajoutez
 # simplement les fichiers .c dans cette variable pour qu’ils soient compilés
 # automatiquement.
-SRCS    = main.c avl.c utils.c
+SRCS    = main.c avl.c
 OBJS    = $(addprefix bin/,$(SRCS:.c=.o))
 TARGET  = bin/c-wildwater
 

@@ -1,12 +1,9 @@
 /*
  * avl.c
  *
- * Implémentation de l’arbre AVL pour le projet C‑WildWater.  Cet
- * arbre est utilisé pour stocker les stations triées par identifiant et
- * agréger leurs différentes valeurs (capacité, volume capté et volume
- * réel).  De plus, chaque station possède une liste de connexions
- * sortantes afin de représenter le graphe d’écoulement utilisé lors
- * du calcul des fuites.
+ * Implémentation d'un arbre AVL pour le projet C-WildWater.
+ * Stocke les stations hydrauliques avec leurs données et leurs connexions,
+ * permettant de modéliser le graphe d'écoulement pour le calcul des fuites.
  */
 
 #include <stdio.h>
@@ -15,10 +12,10 @@
 #include "avl.h"
 
 // -----------------------------------------------------------------------------
-//  Fonctions utilitaires internes
-//
+// Fonctions utilitaires internes
+// -----------------------------------------------------------------------------
 
-// Duplique une chaîne de caractères.  Retourne NULL en cas d’échec.
+// Duplique une chaîne de caractères
 static char* my_strdup(const char* s) {
     if (!s) return NULL;
     size_t len = strlen(s) + 1;
@@ -27,26 +24,26 @@ static char* my_strdup(const char* s) {
     return new;
 }
 
-// Retourne la valeur maximale de deux entiers
+// Retourne le maximum de deux entiers
 static int max_int(int a, int b) {
     return (a > b) ? a : b;
 }
 
-// Retourne la hauteur d’un nœud ou 0 si celui‑ci est NULL
+// Retourne la hauteur d'un nœud (0 si NULL)
 static int get_height(Station* n) {
     return n ? n->height : 0;
 }
 
-// Calcule le facteur d’équilibrage d’un nœud AVL
+// Calcule le facteur d'équilibrage d'un nœud
 static int get_balance(Station* n) {
     return n ? get_height(n->left) - get_height(n->right) : 0;
 }
 
-// Crée un nouveau nœud de station
+// Crée un nouveau nœud de station initialisé
 static Station* create_node(char* name) {
     Station* node = (Station*)malloc(sizeof(Station));
     if (!node) {
-        fprintf(stderr, "Erreur: impossible d’allouer une nouvelle station\n");
+        fprintf(stderr, "Erreur: impossible d'allouer une nouvelle station\n");
         exit(EXIT_FAILURE);
     }
     node->name = my_strdup(name);
@@ -61,7 +58,7 @@ static Station* create_node(char* name) {
     return node;
 }
 
-// Effectue une rotation droite autour du nœud y
+// Rotation droite pour rééquilibrer l'arbre AVL
 static Station* right_rotate(Station* y) {
     Station* x = y->left;
     Station* T2 = x->right;
@@ -72,7 +69,7 @@ static Station* right_rotate(Station* y) {
     return x;
 }
 
-// Effectue une rotation gauche autour du nœud x
+// Rotation gauche pour rééquilibrer l'arbre AVL
 static Station* left_rotate(Station* x) {
     Station* y = x->right;
     Station* T2 = y->left;
@@ -84,9 +81,10 @@ static Station* left_rotate(Station* x) {
 }
 
 // -----------------------------------------------------------------------------
-//  Fonctions publiques
-//
+// Fonctions publiques
+// -----------------------------------------------------------------------------
 
+// Recherche une station par son nom dans l'arbre AVL
 Station* find_station(Station* node, char* name) {
     if (!node) return NULL;
     int cmp = strcmp(name, node->name);
@@ -95,24 +93,23 @@ Station* find_station(Station* node, char* name) {
     return find_station(node->right, name);
 }
 
+// Ajoute une connexion entre deux stations pour une usine spécifique
 void add_connection(Station* parent, Station* child, double leak, Station* factory) {
     if (!parent || !child) return;
+
+    // Vérifier si la connexion existe déjà pour cette usine
     AdjNode* check = parent->children;
     while (check) {
-        /*
-         * Si on trouve déjà ce voisin dans la liste avec la même usine,
-         * on arrête.  Deux stations peuvent être reliées par plusieurs
-         * usines différentes (via des tronçons distincts).  On distingue
-         * donc les connexions par le champ 'factory'.
-         */
         if (check->target == child && check->factory == factory) {
-            return; // Déjà connecté pour cette usine, on ne fait rien
+            return; // Connexion déjà existante
         }
         check = check->next;
     }
+
+    // Créer et initialiser une nouvelle connexion
     AdjNode* new_adj = (AdjNode*)malloc(sizeof(AdjNode));
     if (!new_adj) {
-        fprintf(stderr, "Erreur: impossible d’allouer une nouvelle connexion\n");
+        fprintf(stderr, "Erreur: impossible d'allouer une nouvelle connexion\n");
         exit(EXIT_FAILURE);
     }
     new_adj->target = child;
@@ -123,10 +120,9 @@ void add_connection(Station* parent, Station* child, double leak, Station* facto
     parent->nb_children++;
 }
 
-// Insère ou met à jour une station dans l’arbre AVL.  Si le nœud existe
-// déjà, ses champs capacity, consumption et real_qty sont incrémentés des
-// valeurs fournies.  La comparaison est faite sur le nom de l’usine.
+// Insère ou met à jour une station dans l'arbre AVL
 Station* insert_station(Station* node, char* name, long cap, long cons, long real) {
+    // Cas de base: création d'un nouveau nœud
     if (!node) {
         Station* n = create_node(name);
         n->capacity = cap;
@@ -134,74 +130,87 @@ Station* insert_station(Station* node, char* name, long cap, long cons, long rea
         n->real_qty = real;
         return n;
     }
+
+    // Recherche récursive de la position d'insertion
     int cmp = strcmp(name, node->name);
     if (cmp < 0) {
         node->left = insert_station(node->left, name, cap, cons, real);
     } else if (cmp > 0) {
         node->right = insert_station(node->right, name, cap, cons, real);
     } else {
-        // Mise à jour des valeurs existantes
+        // Station existante: mise à jour des valeurs
         node->capacity += cap;
         node->consumption += cons;
         node->real_qty += real;
         return node;
     }
-    // Mise à jour de la hauteur et équilibrage
+
+    // Mise à jour de la hauteur
     node->height = 1 + max_int(get_height(node->left), get_height(node->right));
+
+    // Vérification de l'équilibre et rotations si nécessaire
     int balance = get_balance(node);
-    // Cas gauche gauche
+
+    // Quatre cas de déséquilibre possibles
     if (balance > 1 && strcmp(name, node->left->name) < 0) {
-        return right_rotate(node);
+        return right_rotate(node);  // Cas gauche-gauche
     }
-    // Cas droite droite
     if (balance < -1 && strcmp(name, node->right->name) > 0) {
-        return left_rotate(node);
+        return left_rotate(node);   // Cas droite-droite
     }
-    // Cas gauche droite
     if (balance > 1 && strcmp(name, node->left->name) > 0) {
-        node->left = left_rotate(node->left);
+        node->left = left_rotate(node->left);  // Cas gauche-droite
         return right_rotate(node);
     }
-    // Cas droite gauche
     if (balance < -1 && strcmp(name, node->right->name) < 0) {
-        node->right = right_rotate(node->right);
+        node->right = right_rotate(node->right);  // Cas droite-gauche
         return left_rotate(node);
     }
+
     return node;
 }
 
+// Libère la mémoire utilisée par l'arbre et ses connexions
 void free_tree(Station* node) {
     if (!node) return;
+
+    // Libération récursive des sous-arbres
     free_tree(node->left);
     free_tree(node->right);
-    // Libérer la liste des connexions
+
+    // Libération de la liste des connexions
     AdjNode* curr = node->children;
     while (curr) {
         AdjNode* tmp = curr;
         curr = curr->next;
         free(tmp);
     }
+
     free(node->name);
     free(node);
 }
 
-// Parcourt l’AVL et écrit les données demandées dans un fichier CSV.  Le
-// paramètre `mode` doit être "max", "src" ou "real".  Pour chaque
-// station ayant une valeur strictement positive, on écrit une ligne
-// « identifiant;valeur » sur la sortie spécifiée.
+// Écrit les données des stations dans un fichier CSV selon le mode spécifié
 void write_csv(Station* node, FILE* output, char* mode) {
     if (!node) return;
+
+    // Parcours infixe (gauche-racine-droite)
     write_csv(node->left, output, mode);
+
+    // Sélection de la valeur selon le mode
     double val = 0;
     if (strcmp(mode, "max") == 0) {
-        val = node->capacity/1000.0;
+        val = node->capacity/1000.0;        // Capacité maximale
     } else if (strcmp(mode, "src") == 0) {
-        val = node->consumption/1000.0;
+        val = node->consumption/1000.0;     // Volume capté
     } else if (strcmp(mode, "real") == 0) {
-        val = node->real_qty/1000.0;
+        val = node->real_qty/1000.0;        // Volume réel
     }
+
+    // Écriture uniquement des valeurs positives
     if (val > 0) {
         fprintf(output, "%s;%.6f\n", node->name, val);
     }
+
     write_csv(node->right, output, mode);
 }
