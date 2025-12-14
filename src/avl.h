@@ -24,7 +24,9 @@ Station* find_station(Station* node, char* name);
 
 // Ajoute une connexion parent→enfant dans le graphe de fuites.  La
 // variable `leak` représente le pourcentage de fuites sur ce tronçon.
-void add_connection(Station* parent, Station* child, double leak);
+// Le paramètre `factory` est un pointeur vers l’usine à laquelle
+// appartient ce tronçon (NULL si la colonne #1 est vide dans le CSV).
+void add_connection(Station* parent, Station* child, double leak, Station* factory);
 
 // Libère récursivement la mémoire occupée par l’arbre AVL et les listes
 // chaînées des connexions.
@@ -33,7 +35,7 @@ void free_tree(Station* node);
 // Parcourt l’AVL et écrit un fichier CSV pour l’histogramme selon le mode
 // demandé.  Le paramètre `mode` doit être "max", "src" ou "real".  Pour
 // chaque station ayant une valeur strictement positive, on écrit une ligne
-// « identifiant;valeur » sur la sortie fournie.
+// «identifiant;valeur» sur la sortie fournie.
 void write_csv(Station* node, FILE* output, char* mode);
 
 #endif /* AVL_H */

@@ -1,5 +1,9 @@
 CC      = gcc
-CFLAGS  = -Wall -Wextra -std=c99 -g
+# Utiliser les optimisations du compilateur pour accélérer l'exécution.
+# L'option -O2 active des optimisations générales et -march=native permet
+# d'utiliser les instructions de l'architecture hôte.  Le drapeau -g est
+# volontairement omis pour ne pas désactiver certaines optimisations.
+CFLAGS  = -Wall -Wextra -std=c99 -O2 -march=native
 LDFLAGS = -lm
 
 # Liste des sources du projet.  Si vous ajoutez d’autres modules, ajoutez

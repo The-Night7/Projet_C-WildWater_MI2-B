@@ -95,14 +95,18 @@ Station* find_station(Station* node, char* name) {
     return find_station(node->right, name);
 }
 
-void add_connection(Station* parent, Station* child, double leak) {
+void add_connection(Station* parent, Station* child, double leak, Station* factory) {
     if (!parent || !child) return;
     AdjNode* check = parent->children;
     while (check) {
-        // Si on trouve déjà ce voisin dans la liste, on arrête.
-        // On compare les adresses mémoires (pointeurs) car l'AVL garantit l'unicité des noeuds.
-        if (check->target == child) {
-            return; // Déjà connecté, on ne fait rien
+        /*
+         * Si on trouve déjà ce voisin dans la liste avec la même usine,
+         * on arrête.  Deux stations peuvent être reliées par plusieurs
+         * usines différentes (via des tronçons distincts).  On distingue
+         * donc les connexions par le champ 'factory'.
+         */
+        if (check->target == child && check->factory == factory) {
+            return; // Déjà connecté pour cette usine, on ne fait rien
         }
         check = check->next;
     }
@@ -113,6 +117,7 @@ void add_connection(Station* parent, Station* child, double leak) {
     }
     new_adj->target = child;
     new_adj->leak_perc = leak;
+    new_adj->factory = factory;
     new_adj->next = parent->children;
     parent->children = new_adj;
     parent->nb_children++;

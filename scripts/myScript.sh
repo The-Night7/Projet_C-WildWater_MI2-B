@@ -221,13 +221,11 @@ EOF
             # Suivre la progression en temps réel
             log_progress "Traitement en cours (PID: $PID)..."
             while kill -0 $PID 2>/dev/null; do
-                if [ -f "$PROGRESS_FILE" ]; then
-                    PROGRESS=$(grep -o "Lignes traitees : [0-9]*" "$PROGRESS_FILE" | tail -1)
-                    if [ -n "$PROGRESS" ]; then
-                        log_progress "$PROGRESS"
-                    fi
-                fi
-                sleep 5
+                # Le programme C affiche déjà la progression sur stderr en écrasant la ligne
+                # précédente grâce à un retour chariot.  Afin de préserver les performances
+                # et d'éviter un enregistrement massif dans le fichier de log, nous
+                # n'analysons plus le fichier de progression pendant l'exécution.
+                sleep 1
             done
 
             # Attendre la fin du processus et récupérer le code de retour
@@ -343,7 +341,7 @@ EOF
         fi
 
         # Après l’optimisation du fichier de fuites
-        awk -F';' '{if (NF==2) s+=$2} END {printf "Volume total de fuites : %.6f M.m3\n", s}' data/leaks.dat
+        awk -F';' '{if (NF==2) s+=$2} END {printf "Volume total de fuites: %.6fM.m3\n", s}' data/leaks.dat
 
         ;;
     *)

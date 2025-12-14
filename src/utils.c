@@ -76,7 +76,7 @@ AVLNode* avl_insert(AVLNode* root, const char* key, void* value) {
     } else if (cmp > 0) {
         root->right = avl_insert(root->right, key, value);
     } else {
-        // La clé existe déjà : on remplace la valeur
+        // La clé existe déjà: on remplace la valeur
         root->value = value;
         return root;
     }

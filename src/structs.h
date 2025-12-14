@@ -16,6 +16,17 @@
 typedef struct AdjNode {
     struct Station* target;   // Pointeur vers la station enfant
     double leak_perc;         // Pourcentage de fuite sur ce tronçon
+    /*
+     * Usine à laquelle appartient ce tronçon.  Certaines lignes du
+     * fichier CSV indiquent en première colonne l’identifiant de
+     * l’usine qui a traité l’eau pour ce tronçon (stockage→jonction,
+     * jonction→raccordement, raccordement→usager).  Pour les lignes
+     * source→usine et usine→stockage, cette colonne est vide, mais
+     * l’usine est implicite: respectivement l’usine aval et l’usine amont.
+     * Ce champ est utilisé lors du calcul des fuites pour ne suivre
+     * que les tronçons correspondant à l’usine étudiée.
+     */
+    struct Station* factory;
     struct AdjNode* next;     // Maillon suivant de la liste
 } AdjNode;
 

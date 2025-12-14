@@ -175,26 +175,40 @@ int main(int argc, char** argv) {
     Station* root = NULL;
     char line[1024];
     long line_count = 0;
+
+    /*
+     * Intervalle d'affichage de la progression.
+     * Les impressions fréquentes sur stderr ralentissent fortement le
+     * traitement sur de gros fichiers (plusieurs millions de lignes).
+     * Nous choisissons donc de n'afficher la progression qu'après
+     * chaque PROGRESS_INTERVAL lignes traitées.  Pour un fichier de
+     * l'ordre de huit millions de lignes, un intervalle de 100000
+     * provoque environ 85 mises à jour, ce qui est amplement suffisant
+     * pour informer l'utilisateur tout en conservant une exécution
+     * rapide.  Si nécessaire, cette valeur peut être ajustée à la
+     * compilation.
+     */
+#ifndef PROGRESS_INTERVAL
+#define PROGRESS_INTERVAL 100000L
+#endif
     long station_count = 0;
     long capacity_count = 0;
 
     // Lecture ligne par ligne du fichier d'entrée
     while (fgets(line, sizeof(line), file)) {
         line_count++;
-        // Affichage sur stderr toutes les 5 lignes pour suivre la progression
-		if (line_count % 5 == 0) {
-    		/*
-     		* Affichage périodique de la progression.
-    		* On imprime sur la sortie d'erreur le nombre de lignes
-     		* traitées toutes les 5 lignes. L'utilisation d'\r permet de
-     		* réécrire la même ligne dans le terminal, évitant d'inonder
-     		* la sortie de messages. Ce comportement permet un suivi
-     		* dynamique des lignes traitées lors du traitement de petits
-     		* fichiers.
-     		*/
-    		fprintf(stderr, "Lignes traitees : %ld...\r", line_count);
-    		fflush(stderr);
-		}
+        // Affichage sur stderr toutes les PROGRESS_INTERVAL lignes pour suivre la progression
+        if (line_count % PROGRESS_INTERVAL == 0) {
+            /*
+             * Affichage périodique de la progression.
+             * L'utilisation de \r permet de réécrire la même ligne dans le terminal,
+             * ce qui évite de créer une nouvelle ligne pour chaque mise à jour.
+             * Les impressions sont moins fréquentes qu'à l'origine pour limiter
+             * l'impact sur les performances lors du traitement de très gros fichiers.
+             */
+            fprintf(stderr, "Lignes traitees : %ld...\r", line_count);
+            fflush(stderr);
+        }
 
         // Nettoyage des retours chariot
         line[strcspn(line, "\r\n")] = '\0';
@@ -267,7 +281,7 @@ int main(int argc, char** argv) {
                  * l'eau (pour les tronçons stockage→jonction,
                  * jonction→raccordement et raccordement→usager).  Si cette
                  * colonne est vide (source→usine ou usine→stockage),
-                 * l'usine est implicite : l'acteur aval pour source→usine,
+                 * l'usine est implicite: l'acteur aval pour source→usine,
                  * et l'acteur amont pour usine→stockage.
                  */
                 Station* factory = NULL;
@@ -319,7 +333,7 @@ int main(int argc, char** argv) {
             /*
              * Mise à jour de la capacité de l'usine (colonne #4) si la
              * colonne #3 est vide.  Dans le format du fichier, une ligne
-             * « USINE » a son identifiant en colonne #2 et sa capacité
+             * «USINE» a son identifiant en colonne #2 et sa capacité
              * en colonne #4.  Aucune connexion n’est créée pour ces lignes.
              * On cumule les capacités au cas où une même usine
              * apparaîtrait plusieurs fois.
