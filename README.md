@@ -42,7 +42,7 @@ Ce projet est conçu pour fonctionner sous un environnement **Linux** (ou WSL).
 sudo apt update
 sudo apt install build-essential gnuplot make
 ```
-##Utilisation :
+## Utilisation :
 ```bash
 ./scripts/myScript.sh histo max    # Capacité maximale
 ./scripts/myScript.sh histo src    # Volume sources
