@@ -156,6 +156,7 @@ EOF
         rm -f "$GP_BIG" "$GP_SMALL"
         ;;
     leaks)
+        START_TIME=$(date +%s%3N)
         echo "--- Mode Fuites ($PARAM) ---"
         LEAK_FILE="$DATA_DIR/leaks.dat"
         CACHE_FILE="$DATA_DIR/.leaks_cache.dat"
@@ -202,30 +203,31 @@ EOF
 
                 # Traitement du résultat
                 if [ "$VAL" = "-1" ]; then
-                    echo "[$FAC] Usine introuvable (${CALC_TIME}s)"
+                    echo "[$FAC] Usine introuvable (${CALC_TIME}ms)"
                     echo "$FAC;-1" >> "$LEAK_FILE"
                     echo "$FAC;-1" >> "$CACHE_FILE"
                 else
-                    echo "[$FAC] Fuites: $VAL M.m3 (calculé en ${CALC_TIME}s)"
+                    echo "[$FAC] Fuites: $VAL M.m3 (calculé en ${CALC_TIME}ms)"
                     echo "$FAC;$VAL" >> "$LEAK_FILE"
                     echo "$FAC;$VAL" >> "$CACHE_FILE"
                 fi
             done
         else
             # Traitement d'une seule usine
-            START_TIME=$SECONDS
-            VAL=$("$EXEC_MAIN" "$DATAFILE" "$PARAM")
-            CALC_TIME=$((SECONDS - START_TIME))
+            T_START=$(date +%s%3N)
+            VAL=$("$EXEC_MAIN" "$DATAFILE" "$FAC") # ou "$PARAM" selon le cas
+            T_END=$(date +%s%3N)
+            CALC_TIME=$((T_END - T_START))
 
             # Si le programme C renvoie -1, l'usine est introuvable.  Dans
             # tous les autres cas, la valeur représente le volume de pertes en
             # millions de m³.
             if [ "$VAL" = "-1" ]; then
-                echo "Usine introuvable (recherche en ${CALC_TIME}s)."
+                echo "Usine introuvable (recherche en ${CALC_TIME}ms)."
                 echo "$PARAM;-1" >> "$LEAK_FILE"
                 echo "$PARAM;-1" >> "$CACHE_FILE"
             else
-                echo "Fuites: $VAL M.m3 (calculé en ${CALC_TIME}s)"
+                echo "Fuites: $VAL M.m3 (calculé en ${CALC_TIME}ms)"
                 echo "$PARAM;$VAL" >> "$LEAK_FILE"
                 echo "$PARAM;$VAL" >> "$CACHE_FILE"
             fi
@@ -243,6 +245,8 @@ EOF
         ;;
 esac
 
-echo "Durée du traitement : ${SECONDS}s"
+END_TIME=$(date +%s%3N)
+TOTAL_DUREE=$((END_TIME - START_TIME))
+echo "Durée totale du traitement : ${TOTAL_DUREE} ms"
 
 exit 0
