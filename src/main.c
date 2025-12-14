@@ -82,13 +82,20 @@ static void calculate_all_leaks(Station* node, FILE* output) {
     // Traitement récursif (parcours infixe)
     calculate_all_leaks(node->left, output);
 
-    // Calcul des fuites pour cette usine si elle a une capacité ou un volume réel
-    double starting_volume = (node->real_qty > 0) ? (double)node->real_qty : (double)node->capacity;
+    /*
+     * Calcul des fuites pour cette station.  Le volume de départ doit
+     * correspondre au volume d'eau réellement traité par l'usine (real_qty)
+     * et non à la capacité théorique.  Si une station ne possède aucun
+     * volume réel entrant, elle est ignorée car elle ne participe pas au
+     * calcul des fuites (cas des nœuds non-usines comme les jonctions ou
+     * espaces de stockage).  La capacité n'est utilisée que pour le mode
+     * histogramme, pas pour l'évaluation des rendements.
+     */
+    double starting_volume = (double)node->real_qty;
 
-    // Ne traiter que les usines ayant un volume de départ ou des enfants
-    if (starting_volume > 0 || node->nb_children > 0) {
+    if (starting_volume > 0) {
         double leaks = solve_leaks(node, starting_volume);
-        // Conversion en millions de m³ (division par 1000)
+        /* Conversion en millions de m³ (division par 1000) */
         fprintf(output, "%s;%.6f\n", node->name, leaks / 1000.0);
     }
 
@@ -269,7 +276,7 @@ int main(int argc, char** argv) {
             /*
              * Mise à jour de la capacité de l'usine (colonne #4) si la
              * colonne #3 est vide.  Dans le format du fichier, une ligne
-             * «USINE» a son identifiant en colonne #2 et sa capacité
+             * « USINE » a son identifiant en colonne #2 et sa capacité
              * en colonne #4.  Aucune connexion n’est créée pour ces lignes.
              * On cumule les capacités au cas où une même usine
              * apparaîtrait plusieurs fois.
@@ -324,14 +331,20 @@ int main(int argc, char** argv) {
              */
             printf("-1\n");
         } else {
-            //  Choix du volume de départ ---
-            double starting_volume = (start->real_qty > 0) ? (double)start->real_qty : (double)start->capacity;
-            double leaks = solve_leaks(start, starting_volume);
             /*
-             * Conversion : la capacité est exprimée en milliers de m³ dans
-             * le fichier d'entrée.  On renvoie les pertes en millions de
-             * m³ (division par 1000).
+             * Choix du volume de départ : on utilise le volume réellement
+             * traité par l'usine (real_qty) et on ignore la capacité si
+             * aucune eau n'a été captée.  Conformément au cahier des
+             * charges, le calcul des fuites doit se baser sur le volume
+             * effectivement en sortie de l'usine.  La capacité ne sert
+             * que dans les histogrammes.
              */
+            double starting_volume = (double)start->real_qty;
+            double leaks = 0.0;
+            if (starting_volume > 0) {
+                leaks = solve_leaks(start, starting_volume);
+            }
+            /* Conversion en millions de m³ */
             printf("%.6f\n", leaks / 1000.0);
         }
     } else if (mode_all_leaks) {
