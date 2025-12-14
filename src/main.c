@@ -14,6 +14,29 @@
 #include <string.h>
 #include "avl.h"
 
+/*
+ * Supprime les espaces blancs en début et en fin de chaîne.  Renvoie
+ * un pointeur vers le premier caractère non blanc de l’argument et
+ * tronque la fin de la chaîne en place.  Utilisé pour nettoyer les
+ * champs lus du fichier CSV afin d’éviter des identifiants
+ * différents à cause d’espaces superflus.
+ */
+static char* trim_whitespace(char* str) {
+    if (!str) return NULL;
+    /* Avancer jusqu’au premier caractère non blanc */
+    while (*str && (*str == ' ' || *str == '\t')) {
+        str++;
+    }
+    if (*str == '\0') return str;
+    /* Reculer depuis la fin pour supprimer les blancs */
+    char* end = str + strlen(str) - 1;
+    while (end > str && (*end == ' ' || *end == '\t')) {
+        *end = '\0';
+        end--;
+    }
+    return str;
+}
+
 // Définition pour le mode "all"
 #define ALL_LEAKS
 
@@ -161,10 +184,19 @@ int main(int argc, char** argv) {
             }
             p++;
         }
-        // Remplacer les tirets ou chaînes vides par NULL
+        /*
+         * Nettoyage des champs : suppression des espaces superflus et
+         * remplacement des tirets ou chaînes vides par NULL.  Cela évite
+         * de créer plusieurs nœuds avec des identifiants identiques mais
+         * différemment espacés, et permet de reconnaître les valeurs
+         * manquantes indiquées par un tiret.
+         */
         for (int i = 0; i < 5; i++) {
-            if (cols[i] && (strcmp(cols[i], "-") == 0 || strlen(cols[i]) == 0)) {
-                cols[i] = NULL;
+            if (cols[i]) {
+                cols[i] = trim_whitespace(cols[i]);
+                if (strcmp(cols[i], "-") == 0 || strlen(cols[i]) == 0) {
+                    cols[i] = NULL;
+                }
             }
         }
         // -----------------------------------------------------------------
@@ -186,35 +218,66 @@ int main(int argc, char** argv) {
                     station_count++;
                 }
             }
-            // Création de la connexion parent→enfant
+            /*
+             * Création de la connexion amont→aval.  Dans le fichier CSV, la
+             * colonne #2 (index 1) contient l’identifiant de l’acteur amont
+             * (usine, stockage, jonction, raccordement, etc.) et la colonne #3
+             * (index 2) l’identifiant de l’acteur aval.  S’il manque l’une des
+             * deux colonnes, aucune connexion n’est ajoutée.  La colonne #5
+             * (index 4) peut contenir un pourcentage de fuites qui sera
+             * stocké dans le graphe.
+             */
             if (cols[1] && cols[2]) {
                 Station* pa = find_station(root, cols[1]);
                 Station* ch = find_station(root, cols[2]);
-                double leak = (cols[4]) ? atof(cols[4]) : 0.0;
+                double leak = (cols[4] ? atof(cols[4]) : 0.0);
                 add_connection(pa, ch, leak);
 
-                // --- CORRECTIF : Calcul du Volume Réel Entrant ---
-                // En mode "all", on calcule le volume réel entrant pour toutes les usines
+                /*
+                 * Mise à jour du volume réel entrant pour l’acteur aval.
+                 * La colonne #4 (index 3) peut contenir un volume sortant
+                 * (uniquement dans les lignes SOURCE→USINE).  Ce volume est
+                 * exprimé en milliers de m³.  Pour calculer le volume réel
+                 * qui arrive effectivement à l’aval, on applique le
+                 * pourcentage de fuite indiqué dans la colonne #5.  Les
+                 * volumes sont cumulés dans le champ real_qty de l’acteur
+                 * aval si nécessaire.
+                 */
                 if (cols[3]) {
                     double vol = atof(cols[3]);
-                    // Volume entrant = Volume sortant du parent - Pertes tuyau
-                    double real_vol = vol * (1.0 - leak/100.0);
-
+                    double real_vol = vol * (1.0 - leak / 100.0);
                     if (mode_all_leaks && ch) {
+                        /*
+                         * En mode "all", on cumule le volume réel pour toutes
+                         * les usines afin de déterminer le volume initial à
+                         * utiliser lors du calcul des fuites en aval.
+                         */
+                        ch->real_qty += (long)real_vol;
+                    } else if (mode_leaks && ch && strcmp(ch->name, arg_mode) == 0) {
+                        /*
+                         * En mode "leaks" (un identifiant d’usine précis), on
+                         * cumule uniquement les volumes arrivant dans l’usine
+                         * cible.  Ceci évite de stocker des volumes pour
+                         * d’autres usines lorsque l’utilisateur ne souhaite
+                         * calculer les pertes que pour une usine donnée.
+                         */
                         ch->real_qty += (long)real_vol;
                     }
-                // Si l'enfant (ch) est l'usine cible, on cumule ce qu'elle reçoit
-                    else if (mode_leaks && ch && strcmp(ch->name, arg_mode) == 0) {
-                        ch->real_qty += (long)real_vol;
                 }
             }
-                // -------------------------------------------------
-            }
-            // Mise à jour de la capacité de l'usine (colonne 4) si la colonne 3 est vide
+
+            /*
+             * Mise à jour de la capacité de l'usine (colonne #4) si la
+             * colonne #3 est vide.  Dans le format du fichier, une ligne
+             * «USINE» a son identifiant en colonne #2 et sa capacité
+             * en colonne #4.  Aucune connexion n’est créée pour ces lignes.
+             * On cumule les capacités au cas où une même usine
+             * apparaîtrait plusieurs fois.
+             */
             if (cols[1] && !cols[2] && cols[3]) {
                 Station* s = find_station(root, cols[1]);
                 if (s) {
-                    s->capacity = atol(cols[3]);
+                    s->capacity += atol(cols[3]);
                     capacity_count++;
                 }
             }
