@@ -126,18 +126,27 @@ if [ ! -f "$DATAFILE" ]; then
     exit 1
 fi
 
-# Compile program if necessary
-if [ ! -x "$EXEC_MAIN" ]; then
-    log_progress "Compiling program..."
-    echo -ne "${YELLOW}"
-    (cd "$SRC_DIR" && make clean && make) || {
-        echo -ne "${RESET}"
-        log_error "Compilation failed."
-        exit 1
-    }
+# Always run make clean before compilation
+log_progress "Running make clean..."
+echo -ne "${YELLOW}"
+(cd "$SRC_DIR" && make clean) || {
     echo -ne "${RESET}"
-    log_success "Compilation completed successfully"
-fi
+    log_error "Make clean failed."
+    exit 1
+}
+echo -ne "${RESET}"
+log_success "Make clean completed successfully"
+
+# Compile program
+log_progress "Compiling program..."
+echo -ne "${YELLOW}"
+(cd "$SRC_DIR" && make) || {
+    echo -ne "${RESET}"
+    log_error "Compilation failed."
+    exit 1
+}
+echo -ne "${RESET}"
+log_success "Compilation completed successfully"
 
 chmod +x "$EXEC_MAIN" 2>/dev/null
 
