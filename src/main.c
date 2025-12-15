@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <time.h>
 #include "avl.h"
 #include "multiThreaded.h"
 
@@ -284,7 +285,7 @@ int main(int argc, char** argv) {
 
     // Progress display interval
 #ifndef PROGRESS_INTERVAL
-#define PROGRESS_INTERVAL 200000L
+#define PROGRESS_INTERVAL 5L
 #endif
     long station_count = 0;
     long capacity_count = 0;
@@ -473,10 +474,10 @@ int main(int argc, char** argv) {
     } else if (mode_all_leaks) {
         // Calculate leaks for all facilities using multithreading
         fprintf(stderr, "Starting multithreaded leak calculation...\n");
-        start = clock(); // Start timing
+        thread_start = clock(); // Start timing
         calculate_all_leaks(root, stdout);
-        stop = clock(); // End timing
-        double time_spent = (double)(stop - start) / CLOCKS_PER_SEC;
+        thread_stop = clock(); // End timing
+        double time_spent = (double)(thread_stop - thread_start) / CLOCKS_PER_SEC;
         fprintf(stderr, "Multithreaded calculation completed in %.2f seconds\n", time_spent);
     } else {
         // Generate histogram

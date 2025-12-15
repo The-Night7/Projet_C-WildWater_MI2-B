@@ -1,7 +1,9 @@
 #include "multiThreaded.h"
 
-// Essential for a thread to execute a scheduled task
+// Variables globales pour le timing
+clock_t thread_start, thread_stop;
 
+// Essential for a thread to execute a scheduled task
 void * doallTasks(void * arg){
 	//printf("void * doallTasks(void * arg)\n");
 	NodeGroup * schedule = (NodeGroup*)arg;
@@ -27,6 +29,7 @@ void initNodeGroup(NodeGroup *ng)
 	ng->head -> content = NULL;
 	ng->head -> next    = NULL;
 }
+
 Threads * setupThreads()
 {
 	//printf("setting up threads\n");
@@ -59,7 +62,6 @@ void addTaskToGroup(NodeGroup g,Task * task)
 	return;
 }
 
-
 void addTaskInThreads(Threads * t, void (*task)(void*param),void*data)
 {
 	//printf("adding tasks to group\n");
@@ -80,7 +82,6 @@ void addTaskInThreads(Threads * t, void (*task)(void*param),void*data)
 }
 
 // To execute the treads scheduled for a thread
-
 void handleThreads(Threads* t)
 {
 	//printf("Handling threads\n");
@@ -94,7 +95,7 @@ void handleThreads(Threads* t)
 	}
 }
 
-// Exemple of tasks
+// Fonction utilitaire pour ajouter du contenu à un NodeGroup
 void addContent(NodeGroup * ng,void*content){
 	Node * current = (Node*)ng -> head;
 	while(current->next){
@@ -102,4 +103,5 @@ void addContent(NodeGroup * ng,void*content){
 	}
 	current-> next = malloc(sizeof(Node));
 	current-> next-> content = content;
+	current-> next-> next = NULL;
 }
