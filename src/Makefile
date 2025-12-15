@@ -1,14 +1,13 @@
 CC      = gcc
-# Utiliser les optimisations du compilateur pour accélérer l'exécution.
-# L'option -O2 active des optimisations générales et -march=native permet
-# d'utiliser les instructions de l'architecture hôte.  Le drapeau -g est
-# volontairement omis pour ne pas désactiver certaines optimisations.
+# Use compiler optimizations to speed up execution.
+# The -O2 option enables general optimizations and -march=native allows
+# using host architecture instructions. The -g flag is deliberately omitted
+# to avoid disabling certain optimizations.
 CFLAGS  = -Wall -Wextra -std=c99 -O2 -march=native
 LDFLAGS = -lm
 
-# Liste des sources du projet.  Si vous ajoutez d’autres modules, ajoutez
-# simplement les fichiers .c dans cette variable pour qu’ils soient compilés
-# automatiquement.
+# List of project source files. If you add other modules, simply
+# add the .c files to this variable so they are compiled automatically.
 SRCS    = main.c avl.c
 OBJS    = $(addprefix bin/,$(SRCS:.c=.o))
 TARGET  = bin/c-wildwater
@@ -21,7 +20,7 @@ bin:
 $(TARGET): $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-# Règles de compilation des fichiers objets
+# Compilation rules for object files
 bin/%.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 

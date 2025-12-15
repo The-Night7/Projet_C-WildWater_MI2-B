@@ -1,43 +1,43 @@
 /*
- * Structures de données pour le projet C-WildWater
+* Data structures for the C-WildWater project
  *
- * Définit les structures pour représenter le réseau hydraulique
- * sous forme d'arbre AVL et de graphe orienté.
+ * Defines structures to represent the hydraulic network
+ * as both an AVL tree and a directed graph.
  */
 
 #ifndef STRUCTS_H
 #define STRUCTS_H
 
 /**
- * Nœud de liste chaînée pour les connexions entre stations
+ * Linked list node for connections between stations
  */
 typedef struct AdjNode {
-    struct Station* target;   // Station destination
-    double leak_perc;         // Pourcentage de fuite sur ce tronçon
-    struct Station* factory;  // Usine associée à ce tronçon
-    struct AdjNode* next;     // Pointeur vers le nœud suivant
+    struct Station* target;   // Destination station
+    double leak_perc;         // Leak percentage on this section
+    struct Station* factory;  // Facility associated with this section
+    struct AdjNode* next;     // Pointer to next node
 } AdjNode;
 
 /**
- * Station hydraulique (usine, source, stockage, etc.)
- * Sert à la fois de nœud dans l'arbre AVL et de sommet dans le graphe
+ * Hydraulic station (facility, source, storage, etc.)
+ * Serves as both a node in the AVL tree and a vertex in the graph
  */
 typedef struct Station {
-    char* name;           // Identifiant unique
+    char* name;           // Unique identifier
 
-    // Données volumétriques (en unités internes)
-    long capacity;        // Capacité maximale de traitement
-    long consumption;     // Volume capté en amont
-    long real_qty;        // Volume réel après pertes
+    // Volume data (in internal units)
+    long capacity;        // Maximum processing capacity
+    long consumption;     // Volume captured upstream
+    long real_qty;        // Actual volume after losses
 
-    // Champs pour l'arbre AVL
-    int height;           // Hauteur du sous-arbre
-    struct Station* left; // Sous-arbre gauche
-    struct Station* right;// Sous-arbre droit
+    // AVL tree fields
+    int height;           // Height of subtree
+    struct Station* left; // Left subtree
+    struct Station* right;// Right subtree
 
-    // Champs pour le graphe d'écoulement
-    AdjNode* children;    // Liste des connexions sortantes
-    int nb_children;      // Nombre de connexions sortantes
+    // Flow graph fields
+    AdjNode* children;    // List of outgoing connections
+    int nb_children;      // Number of outgoing connections
 } Station;
 
 #endif /* STRUCTS_H */

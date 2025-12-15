@@ -1,11 +1,11 @@
 /*
- * main.c - VERSION FINALE (Optimisée + Bonus All + Bonus Leak Max)
+ * main.c - FINAL VERSION (Optimized + All Bonus + Max Leak Bonus)
  *
- * Programme d'analyse du réseau d'eau potable C-WildWater.
- * Fonctionnalités:
- * - Génération d'histogrammes (capacités, volumes captés, volumes réels)
- * - Calcul des pertes en aval d'une usine spécifique ou de toutes les usines
- * - Détection du tronçon critique (pire fuite absolue)
+ * Analysis program for the C-WildWater drinking water network.
+ * Features:
+ * - Histogram generation (capacities, captured volumes, actual volumes)
+ * - Calculation of losses downstream from a specific facility or all facilities
+ * - Detection of critical section (worst absolute leak)
  */
 
 #include <stdio.h>
@@ -14,15 +14,15 @@
 #include <ctype.h>
 #include "avl.h"
 
-// Supprime les espaces en début et fin de chaîne
+// Removes whitespace at the beginning and end of string
 static char* trim_whitespace(char* str) {
     if (!str) return NULL;
-    // Avancer jusqu'au premier caractère non blanc
+    // Move to first non-whitespace character
     while (*str && (*str == ' ' || *str == '\t')) {
         str++;
     }
     if (*str == '\0') return str;
-    // Supprimer les blancs en fin de chaîne
+    // Remove trailing whitespace
     char* end = str + strlen(str) - 1;
     while (end > str && (*end == ' ' || *end == '\t')) {
         *end = '\0';
@@ -31,26 +31,26 @@ static char* trim_whitespace(char* str) {
     return str;
 }
 
-// Définition pour le mode "all"
+// Definition for "all" mode
 #define ALL_LEAKS
 
 /**
- * Calcule récursivement les pertes d'eau dans le réseau
- * Version améliorée avec détection du tronçon critique
+ * Recursively calculates water losses in the network
+ * Enhanced version with critical section detection
  *
- * @param node         Station courante
- * @param input_vol    Volume d'eau entrant
- * @param u            Usine dont on calcule les fuites
- * @param max_leak_val Pointeur pour suivre la valeur de la fuite maximale
- * @param max_from     Pointeur pour suivre la station amont du tronçon critique
- * @param max_to       Pointeur pour suivre la station aval du tronçon critique
- * @return             Volume total de fuites en aval
+ * @param node         Current station
+ * @param input_vol    Incoming water volume
+ * @param u            Facility for which leaks are calculated
+ * @param max_leak_val Pointer to track maximum leak value
+ * @param max_from     Pointer to track upstream station of critical section
+ * @param max_to       Pointer to track downstream station of critical section
+ * @return             Total downstream leak volume
  */
 static double solve_leaks(Station* node, double input_vol, Station* u,
                          double* max_leak_val, char** max_from, char** max_to) {
     if (!node) return 0.0;
 
-    // Compter les connexions sortantes pour cette usine
+    // Count outgoing connections for this facility
     int count = 0;
     AdjNode* curr = node->children;
     while (curr) {
@@ -61,30 +61,30 @@ static double solve_leaks(Station* node, double input_vol, Station* u,
     }
     if (count == 0) return 0.0;
 
-    // Répartir le volume et calculer les pertes
+    // Distribute volume and calculate losses
     double total_loss = 0.0;
     double vol_per_pipe = input_vol / count;
     curr = node->children;
 
     while (curr) {
         if (curr->factory == NULL || curr->factory == u) {
-            // Calcul des pertes sur ce tronçon
+            // Calculate losses on this section
             double pipe_loss = 0.0;
             if (curr->leak_perc > 0) {
                 pipe_loss = vol_per_pipe * (curr->leak_perc / 100.0);
             }
-            
-            // --- BONUS : Détection du pire tronçon (Valeur Absolue) ---
+
+            // --- BONUS: Worst section detection (Absolute Value) ---
             if (pipe_loss > *max_leak_val) {
                 *max_leak_val = pipe_loss;
-                *max_from = node->name;       // Identifiant Amont
-                *max_to = curr->target->name; // Identifiant Aval
+                *max_from = node->name;       // Upstream ID
+                *max_to = curr->target->name; // Downstream ID
             }
-            
+
             double vol_arrived = vol_per_pipe - pipe_loss;
 
-            // Ajouter les pertes locales et récursives
-            total_loss += pipe_loss + solve_leaks(curr->target, vol_arrived, u, 
+            // Add local and recursive losses
+            total_loss += pipe_loss + solve_leaks(curr->target, vol_arrived, u,
                                                 max_leak_val, max_from, max_to);
         }
         curr = curr->next;
@@ -93,70 +93,70 @@ static double solve_leaks(Station* node, double input_vol, Station* u,
 }
 
 /**
- * Calcule les fuites pour toutes les usines de l'arbre
+ * Calculates leaks for all facilities in the tree
  *
- * @param node    Nœud courant de l'arbre
- * @param output  Fichier de sortie pour les résultats
+ * @param node    Current tree node
+ * @param output  Output file for results
  */
 static void calculate_all_leaks(Station* node, FILE* output) {
     if (!node) return;
 
-    // Parcours infixe (gauche-racine-droite)
+    // Inorder traversal (left-root-right)
     calculate_all_leaks(node->left, output);
 
-    // Calcul des fuites si la station a un volume entrant
+    // Calculate leaks if station has incoming volume
     double starting_volume = (double)node->real_qty;
     if (starting_volume > 0) {
-        // Variables pour le bonus du tronçon critique
+        // Variables for critical section bonus
         double max_leak_val = 0.0;
         char* max_from = NULL;
         char* max_to = NULL;
-        
-        double leaks = solve_leaks(node, starting_volume, node, 
+
+        double leaks = solve_leaks(node, starting_volume, node,
                                   &max_leak_val, &max_from, &max_to);
-        
-        // Conversion en millions de m³
+
+        // Convert to millions of m³
         fprintf(output, "%s;%.6f\n", node->name, leaks / 1000.0);
-        
-        // Affichage du tronçon critique (sur stderr pour ne pas perturber le CSV)
-        if (max_from && max_to && max_leak_val > 0.0) {
-            fprintf(stderr, "Usine %s - Tronçon critique: %s → %s (%.6f M.m³)\n", 
-                    node->name, max_from, max_to, max_leak_val / 1000.0);
-        }
+
+        // Display critical section (to stderr to avoid disrupting CSV)
+        // if (max_from && max_to && max_leak_val > 0.0) {
+        //     fprintf(stderr, "Facility %s - Critical section: %s → %s (%.6f M.m³)\n",
+        //             node->name, max_from, max_to, max_leak_val / 1000.0);
+        // }
     }
 
     calculate_all_leaks(node->right, output);
 }
 
-// Compte le nombre total de stations dans l'arbre
+// Counts total number of stations in the tree
 static int count_stations(Station* node) {
     if (!node) return 0;
     return 1 + count_stations(node->left) + count_stations(node->right);
 }
 
 /**
- * Point d'entrée du programme
+ * Program entry point
  *
  * Arguments:
- * - argv[1]: chemin du fichier de données (.dat ou .csv)
- * - argv[2]: mode d'exécution
- *   * "max", "src", "real", "all": génération d'histogrammes
- *   * autre: identifiant d'usine pour calcul de fuites spécifique
+ * - argv[1]: path to data file (.dat or .csv)
+ * - argv[2]: execution mode
+ *   * "max", "src", "real", "all": histogram generation
+ *   * other: facility ID for specific leak calculation
  */
 int main(int argc, char** argv) {
-    // Vérification des arguments
+    // Argument validation
     if (argc != 3) return 1;
 
-    // Ouverture du fichier de données
+    // Open data file
     FILE* file = fopen(argv[1], "r");
     if (!file) return 2;
 
-    // Optimisation de la lecture
-    const size_t BUF_SIZE = 16 * 1024 * 1024; // 16 Mo
+    // Reading optimization
+    const size_t BUF_SIZE = 16 * 1024 * 1024; // 16 MB
     char* big_buffer = malloc(BUF_SIZE);
     if (big_buffer) setvbuf(file, big_buffer, _IOFBF, BUF_SIZE);
 
-    // Détermination du mode d'exécution
+    // Determine execution mode
     char* arg_mode = argv[2];
     int mode_histo = 0; // 1=max, 2=src, 3=real, 4=all
     int mode_leaks = 0;
@@ -166,35 +166,35 @@ int main(int argc, char** argv) {
     else if (strcmp(arg_mode, "src") == 0) mode_histo = 2;
     else if (strcmp(arg_mode, "real") == 0) mode_histo = 3;
     else if (strcmp(arg_mode, "all") == 0) mode_all_leaks = 1;
-    else mode_leaks = 1; // Identifiant d'usine
+    else mode_leaks = 1; // Facility ID
 
-    // Initialisation
+    // Initialization
     Station* root = NULL;
     char line[1024];
     long line_count = 0;
 
-    // Intervalle d'affichage de la progression
+    // Progress display interval
 #ifndef PROGRESS_INTERVAL
 #define PROGRESS_INTERVAL 200000L
 #endif
     long station_count = 0;
     long capacity_count = 0;
 
-    // Lecture et traitement du fichier
+    // Read and process file
     while (fgets(line, sizeof(line), file)) {
         line_count++;
 
-        // Affichage périodique de la progression
+        // Periodic progress display
         if (line_count % PROGRESS_INTERVAL == 0) {
-            fprintf(stderr, "Lignes traitees : %ld...\r", line_count);
+            fprintf(stderr, "Lines processed: %ld...\r", line_count);
             fflush(stderr);
         }
 
-        // Nettoyage de la ligne
+        // Clean line
         line[strcspn(line, "\r\n")] = '\0';
         if (strlen(line) < 2) continue;
 
-        // Découpage par points-virgules (jusqu'à 5 colonnes)
+        // Split by semicolons (up to 5 columns)
         char* cols[5] = {NULL};
         char* p = line;
         int c = 0;
@@ -207,7 +207,7 @@ int main(int argc, char** argv) {
             p++;
         }
 
-        // Nettoyage des champs
+        // Clean fields
         for (int i = 0; i < 5; i++) {
             if (cols[i]) {
                 cols[i] = trim_whitespace(cols[i]);
@@ -217,14 +217,14 @@ int main(int argc, char** argv) {
             }
         }
 
-        // Traitement selon le mode
+        // Process according to mode
         if (mode_leaks || mode_all_leaks) {
-            // Mode calcul de fuites: construction du graphe complet
+            // Leak calculation mode: build complete graph
 
-            // Création des stations si nécessaire
+            // Create stations if needed
             Station* pa = NULL;
             Station* ch = NULL;
-            
+
             if (cols[1]) {
                 pa = find_station(root, cols[1]);
                 if (!pa) {
@@ -233,7 +233,7 @@ int main(int argc, char** argv) {
                     station_count++;
                 }
             }
-            
+
             if (cols[2]) {
                 ch = find_station(root, cols[2]);
                 if (!ch) {
@@ -243,14 +243,14 @@ int main(int argc, char** argv) {
                 }
             }
 
-            // Création des connexions entre stations
+            // Create connections between stations
             if (pa && ch) {
-                double leak = (cols[4] ? atof(cols[4]) : 0.0);  // % de fuite
+                double leak = (cols[4] ? atof(cols[4]) : 0.0);  // Leak %
 
-                // Détermination de l'usine associée au tronçon
+                // Determine facility associated with section
                 Station* factory = NULL;
                 if (cols[0]) {
-                    // Usine explicitement mentionnée
+                    // Explicitly mentioned facility
                     factory = find_station(root, cols[0]);
                     if (!factory) {
                         root = insert_station(root, cols[0], 0, 0, 0);
@@ -258,18 +258,18 @@ int main(int argc, char** argv) {
                         station_count++;
                     }
                 } else {
-                    // Usine implicite selon le type de tronçon
+                    // Implicit facility based on section type
                     if (cols[3]) {
-                        factory = ch;  // Source→usine: l'usine est en aval
+                        factory = ch;  // Source→facility: facility is downstream
                     } else {
-                        factory = pa;  // Usine→stockage: l'usine est en amont
+                        factory = pa;  // Facility→storage: facility is upstream
                     }
                 }
 
-                // Ajout de la connexion
+                // Add connection
                 add_connection(pa, ch, leak, factory);
 
-                // Mise à jour du volume réel pour les tronçons source→usine
+                // Update actual volume for source→facility sections
                 if (cols[3] && !cols[0]) {
                     double vol = atof(cols[3]);
                     double real_vol = vol * (1.0 - leak / 100.0);
@@ -282,7 +282,7 @@ int main(int argc, char** argv) {
                 }
             }
 
-            // Mise à jour de la capacité des usines
+            // Update facility capacities
             if (cols[1] && !cols[2] && cols[3]) {
                 Station* s = find_station(root, cols[1]);
                 if (s) {
@@ -292,79 +292,79 @@ int main(int argc, char** argv) {
             }
 
         } else {
-            // Mode histogramme: agrégation selon le mode choisi
+            // Histogram mode: aggregate according to mode
 
             if (mode_histo == 1 && cols[1] && !cols[2] && cols[3]) {
-                // Mode "max": capacités maximales des usines
+                // "max" mode: maximum facility capacities
                 root = insert_station(root, cols[1], atol(cols[3]), 0, 0);
             }
             else if ((mode_histo == 2 || mode_histo == 3) && cols[2] && cols[3]) {
-                // Modes "src" ou "real": volumes captés ou réels
+                // "src" or "real" modes: captured or actual volumes
                 long vol = atol(cols[3]);
-                long reel = vol;
+                long real = vol;
 
                 if (mode_histo == 3 && cols[4]) {
-                    // Pour "real", appliquer le % de fuite
+                    // For "real", apply leak %
                     double p_leak = atof(cols[4]);
-                    reel = (long)(vol * (1.0 - (p_leak / 100.0)));
+                    real = (long)(vol * (1.0 - (p_leak / 100.0)));
                 }
 
-                root = insert_station(root, cols[2], 0, vol, reel);
+                root = insert_station(root, cols[2], 0, vol, real);
             }
         }
     }
 
-    // Affichage des statistiques en mode "all"
+    // Display statistics in "all" mode
     if (mode_all_leaks) {
-        fprintf(stderr, "Lignes traitées: %ld\n", line_count);
-        fprintf(stderr, "Stations créées: %ld\n", station_count);
-        fprintf(stderr, "Capacités définies: %ld\n", capacity_count);
-        fprintf(stderr, "Nombre total de stations dans l'AVL: %d\n", count_stations(root));
+        fprintf(stderr, "Lines processed: %ld\n", line_count);
+        fprintf(stderr, "Stations created: %ld\n", station_count);
+        fprintf(stderr, "Capacities defined: %ld\n", capacity_count);
+        fprintf(stderr, "Total stations in AVL: %d\n", count_stations(root));
     }
 
     fclose(file);
 
-    // Production des résultats selon le mode
+    // Produce results according to mode
     if (mode_leaks) {
-        // Calcul des fuites pour une usine spécifique
+        // Calculate leaks for a specific facility
         Station* start = find_station(root, arg_mode);
 
         if (!start) {
-            // Usine introuvable
+            // Facility not found
             printf("-1\n");
         } else {
-            // Variables pour le bonus du tronçon critique
+            // Variables for critical section bonus
             double max_leak_val = 0.0;
             char* max_from = NULL;
             char* max_to = NULL;
-            
-            // Calcul des fuites à partir du volume réel ou de la capacité si nécessaire
+
+            // Calculate leaks from actual volume or capacity if needed
             double starting_volume = (start->real_qty > 0) ? (double)start->real_qty : (double)start->capacity;
             double leaks = 0.0;
 
             if (starting_volume > 0) {
-                leaks = solve_leaks(start, starting_volume, start, 
+                leaks = solve_leaks(start, starting_volume, start,
                                    &max_leak_val, &max_from, &max_to);
             }
 
-            // Affichage du résultat en millions de m³
+            // Display result in millions of m³
             printf("%.6f\n", leaks / 1000.0);
-            
-            // --- AFFICHAGE BONUS (sur stderr pour ne pas casser le CSV) ---
+
+            // --- BONUS DISPLAY (to stderr to avoid breaking CSV) ---
             if (max_from && max_to && max_leak_val > 0.0) {
-                fprintf(stderr, "\n=== INFO BONUS ===\n");
-                fprintf(stderr, "Troncon critique (Pire fuite absolue) :\n");
-                fprintf(stderr, "Amont : %s\n", max_from);
-                fprintf(stderr, "Aval  : %s\n", max_to);
-                fprintf(stderr, "Perte : %.6f M.m3\n", max_leak_val / 1000.0);
-                fprintf(stderr, "==================\n");
+                fprintf(stderr, "\n=== BONUS INFO ===\n");
+                fprintf(stderr, "Critical section (Worst absolute leak):\n");
+                fprintf(stderr, "Upstream: %s\n", max_from);
+                fprintf(stderr, "Downstream: %s\n", max_to);
+                fprintf(stderr, "Loss: %.6f M.m3\n", max_leak_val / 1000.0);
+                fprintf(stderr, "=================\n");
             }
         }
     } else if (mode_all_leaks) {
-        // Calcul des fuites pour toutes les usines
+        // Calculate leaks for all facilities
         calculate_all_leaks(root, stdout);
     } else {
-        // Génération d'histogramme
+        // Generate histogram
         char mode_str[10];
         if (mode_histo == 1) strcpy(mode_str, "max");
         if (mode_histo == 2) strcpy(mode_str, "src");
@@ -373,7 +373,7 @@ int main(int argc, char** argv) {
         write_csv(root, stdout, mode_str);
     }
 
-    // Libération de la mémoire
+    // Free memory
     free_tree(root);
     if (big_buffer) free(big_buffer);
 

@@ -1,2 +1,4 @@
+# Use Git Large File Storage (LFS) for data files
+# This ensures efficient handling of large binary files
 *.dat filter=lfs diff=lfs merge=lfs -text
 *.csv filter=lfs diff=lfs merge=lfs -text
