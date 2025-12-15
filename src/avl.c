@@ -1,4 +1,5 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 /*
  * avl.c
@@ -12,11 +13,22 @@
  */
 
 >>>>>>> origin/teuteu_test
+=======
+/*
+ * avl.c
+ *
+ * Implémentation d'un arbre AVL pour le projet C-WildWater.
+ * Stocke les stations hydrauliques avec leurs données et leurs connexions,
+ * permettant de modéliser le graphe d'écoulement pour le calcul des fuites.
+ */
+
+>>>>>>> origin/main
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "avl.h"
 
+<<<<<<< HEAD
 <<<<<<< HEAD
 // --- Utilitaires ---
 
@@ -150,6 +162,13 @@ Station* insert_station(Station* node, char* name, long cap, long cons, long rea
 //
 
 // Duplique une chaîne de caractères.  Retourne NULL en cas d’échec.
+=======
+// -----------------------------------------------------------------------------
+// Fonctions utilitaires internes
+// -----------------------------------------------------------------------------
+
+// Duplique une chaîne de caractères
+>>>>>>> origin/main
 static char* my_strdup(const char* s) {
     if (!s) return NULL;
     size_t len = strlen(s) + 1;
@@ -158,26 +177,46 @@ static char* my_strdup(const char* s) {
     return new;
 }
 
+<<<<<<< HEAD
 // Retourne la valeur maximale de deux entiers
+=======
+// Retourne le maximum de deux entiers
+>>>>>>> origin/main
 static int max_int(int a, int b) {
     return (a > b) ? a : b;
 }
 
+<<<<<<< HEAD
 // Retourne la hauteur d’un nœud ou 0 si celui‑ci est NULL
+=======
+// Retourne la hauteur d'un nœud (0 si NULL)
+>>>>>>> origin/main
 static int get_height(Station* n) {
     return n ? n->height : 0;
 }
 
+<<<<<<< HEAD
 // Calcule le facteur d’équilibrage d’un nœud AVL
+=======
+// Calcule le facteur d'équilibrage d'un nœud
+>>>>>>> origin/main
 static int get_balance(Station* n) {
     return n ? get_height(n->left) - get_height(n->right) : 0;
 }
 
+<<<<<<< HEAD
 // Crée un nouveau nœud de station
 static Station* create_node(char* name) {
     Station* node = (Station*)malloc(sizeof(Station));
     if (!node) {
         fprintf(stderr, "Erreur: impossible d’allouer une nouvelle station\n");
+=======
+// Crée un nouveau nœud de station initialisé
+static Station* create_node(char* name) {
+    Station* node = (Station*)malloc(sizeof(Station));
+    if (!node) {
+        fprintf(stderr, "Erreur: impossible d'allouer une nouvelle station\n");
+>>>>>>> origin/main
         exit(EXIT_FAILURE);
     }
     node->name = my_strdup(name);
@@ -192,7 +231,11 @@ static Station* create_node(char* name) {
     return node;
 }
 
+<<<<<<< HEAD
 // Effectue une rotation droite autour du nœud y
+=======
+// Rotation droite pour rééquilibrer l'arbre AVL
+>>>>>>> origin/main
 static Station* right_rotate(Station* y) {
     Station* x = y->left;
     Station* T2 = x->right;
@@ -203,7 +246,11 @@ static Station* right_rotate(Station* y) {
     return x;
 }
 
+<<<<<<< HEAD
 // Effectue une rotation gauche autour du nœud x
+=======
+// Rotation gauche pour rééquilibrer l'arbre AVL
+>>>>>>> origin/main
 static Station* left_rotate(Station* x) {
     Station* y = x->right;
     Station* T2 = y->left;
@@ -215,9 +262,16 @@ static Station* left_rotate(Station* x) {
 }
 
 // -----------------------------------------------------------------------------
+<<<<<<< HEAD
 //  Fonctions publiques
 //
 
+=======
+// Fonctions publiques
+// -----------------------------------------------------------------------------
+
+// Recherche une station par son nom dans l'arbre AVL
+>>>>>>> origin/main
 Station* find_station(Station* node, char* name) {
     if (!node) return NULL;
     int cmp = strcmp(name, node->name);
@@ -226,6 +280,7 @@ Station* find_station(Station* node, char* name) {
     return find_station(node->right, name);
 }
 
+<<<<<<< HEAD
 void add_connection(Station* parent, Station* child, double leak) {
     if (!parent || !child) return;
     AdjNode* check = parent->children;
@@ -240,27 +295,58 @@ void add_connection(Station* parent, Station* child, double leak) {
     AdjNode* new_adj = (AdjNode*)malloc(sizeof(AdjNode));
     if (!new_adj) {
         fprintf(stderr, "Erreur: impossible d’allouer une nouvelle connexion\n");
+=======
+// Ajoute une connexion entre deux stations pour une usine spécifique
+void add_connection(Station* parent, Station* child, double leak, Station* factory) {
+    if (!parent || !child) return;
+
+    // Vérifier si la connexion existe déjà pour cette usine
+    AdjNode* check = parent->children;
+    while (check) {
+        if (check->target == child && check->factory == factory) {
+            return; // Connexion déjà existante
+        }
+        check = check->next;
+    }
+
+    // Créer et initialiser une nouvelle connexion
+    AdjNode* new_adj = (AdjNode*)malloc(sizeof(AdjNode));
+    if (!new_adj) {
+        fprintf(stderr, "Erreur: impossible d'allouer une nouvelle connexion\n");
+>>>>>>> origin/main
         exit(EXIT_FAILURE);
     }
     new_adj->target = child;
     new_adj->leak_perc = leak;
+<<<<<<< HEAD
+=======
+    new_adj->factory = factory;
+>>>>>>> origin/main
     new_adj->next = parent->children;
     parent->children = new_adj;
     parent->nb_children++;
 }
 
+<<<<<<< HEAD
 // Insère ou met à jour une station dans l’arbre AVL.  Si le nœud existe
 // déjà, ses champs capacity, consumption et real_qty sont incrémentés des
 // valeurs fournies.  La comparaison est faite sur le nom de l’usine.
 Station* insert_station(Station* node, char* name, long cap, long cons, long real) {
     if (!node) {
 >>>>>>> origin/teuteu_test
+=======
+// Insère ou met à jour une station dans l'arbre AVL
+Station* insert_station(Station* node, char* name, long cap, long cons, long real) {
+    // Cas de base: création d'un nouveau nœud
+    if (!node) {
+>>>>>>> origin/main
         Station* n = create_node(name);
         n->capacity = cap;
         n->consumption = cons;
         n->real_qty = real;
         return n;
     }
+<<<<<<< HEAD
 <<<<<<< HEAD
 
     int cmp = strcmp(name, node->name);
@@ -270,19 +356,28 @@ Station* insert_station(Station* node, char* name, long cap, long cons, long rea
         // CAS IMPORTANT : La station existe déjà (doublon d'ID).
         // On ne crée pas de nouveau nœud, on cumule les volumes (somme).
 =======
+=======
+
+    // Recherche récursive de la position d'insertion
+>>>>>>> origin/main
     int cmp = strcmp(name, node->name);
     if (cmp < 0) {
         node->left = insert_station(node->left, name, cap, cons, real);
     } else if (cmp > 0) {
         node->right = insert_station(node->right, name, cap, cons, real);
     } else {
+<<<<<<< HEAD
         // Mise à jour des valeurs existantes
 >>>>>>> origin/teuteu_test
+=======
+        // Station existante: mise à jour des valeurs
+>>>>>>> origin/main
         node->capacity += cap;
         node->consumption += cons;
         node->real_qty += real;
         return node;
     }
+<<<<<<< HEAD
 <<<<<<< HEAD
 
     // 2. Mise à jour de la hauteur de l'ancêtre actuel
@@ -383,16 +478,58 @@ void free_tree(Station* node) {
     free_tree(node->left);
     free_tree(node->right);
     // Libérer la liste des connexions
+=======
+
+    // Mise à jour de la hauteur
+    node->height = 1 + max_int(get_height(node->left), get_height(node->right));
+
+    // Vérification de l'équilibre et rotations si nécessaire
+    int balance = get_balance(node);
+
+    // Quatre cas de déséquilibre possibles
+    if (balance > 1 && strcmp(name, node->left->name) < 0) {
+        return right_rotate(node);  // Cas gauche-gauche
+    }
+    if (balance < -1 && strcmp(name, node->right->name) > 0) {
+        return left_rotate(node);   // Cas droite-droite
+    }
+    if (balance > 1 && strcmp(name, node->left->name) > 0) {
+        node->left = left_rotate(node->left);  // Cas gauche-droite
+        return right_rotate(node);
+    }
+    if (balance < -1 && strcmp(name, node->right->name) < 0) {
+        node->right = right_rotate(node->right);  // Cas droite-gauche
+        return left_rotate(node);
+    }
+
+    return node;
+}
+
+// Libère la mémoire utilisée par l'arbre et ses connexions
+void free_tree(Station* node) {
+    if (!node) return;
+
+    // Libération récursive des sous-arbres
+    free_tree(node->left);
+    free_tree(node->right);
+
+    // Libération de la liste des connexions
+>>>>>>> origin/main
     AdjNode* curr = node->children;
     while (curr) {
         AdjNode* tmp = curr;
         curr = curr->next;
         free(tmp);
     }
+<<<<<<< HEAD
+=======
+
+>>>>>>> origin/main
     free(node->name);
     free(node);
 }
 
+<<<<<<< HEAD
 // Parcourt l’AVL et écrit les données demandées dans un fichier CSV.  Le
 // paramètre `mode` doit être "max", "src" ou "real".  Pour chaque
 // station ayant une valeur strictement positive, on écrit une ligne
@@ -429,3 +566,29 @@ void write_csv(Station* node, FILE* output, char* mode) {
     write_csv(node->right, output, mode);
 }
 >>>>>>> origin/teuteu_test
+=======
+// Écrit les données des stations dans un fichier CSV selon le mode spécifié
+void write_csv(Station* node, FILE* output, char* mode) {
+    if (!node) return;
+
+    // Parcours infixe (gauche-racine-droite)
+    write_csv(node->left, output, mode);
+
+    // Sélection de la valeur selon le mode
+    double val = 0;
+    if (strcmp(mode, "max") == 0) {
+        val = node->capacity/1000.0;        // Capacité maximale
+    } else if (strcmp(mode, "src") == 0) {
+        val = node->consumption/1000.0;     // Volume capté
+    } else if (strcmp(mode, "real") == 0) {
+        val = node->real_qty/1000.0;        // Volume réel
+    }
+
+    // Écriture uniquement des valeurs positives
+    if (val > 0) {
+        fprintf(output, "%s;%.6f\n", node->name, val);
+    }
+
+    write_csv(node->right, output, mode);
+}
+>>>>>>> origin/main

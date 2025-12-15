@@ -1,4 +1,5 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 # ==========================================
 # Makefile pour le projet C-WildWater
 # ==========================================
@@ -64,10 +65,33 @@ TARGET  = c-wildwater
 
 all: $(TARGET)
 
+=======
+CC      = gcc
+# Utiliser les optimisations du compilateur pour accélérer l'exécution.
+# L'option -O2 active des optimisations générales et -march=native permet
+# d'utiliser les instructions de l'architecture hôte.  Le drapeau -g est
+# volontairement omis pour ne pas désactiver certaines optimisations.
+CFLAGS  = -Wall -Wextra -std=c99 -O2 -march=native
+LDFLAGS = -lm
+
+# Liste des sources du projet.  Si vous ajoutez d’autres modules, ajoutez
+# simplement les fichiers .c dans cette variable pour qu’ils soient compilés
+# automatiquement.
+SRCS    = main.c avl.c
+OBJS    = $(addprefix bin/,$(SRCS:.c=.o))
+TARGET  = bin/c-wildwater
+
+all: bin $(TARGET)
+
+bin:
+	mkdir -p bin
+
+>>>>>>> origin/main
 $(TARGET): $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 # Règles de compilation des fichiers objets
+<<<<<<< HEAD
 %.o: %.c
 	$(CC) $(CFLAGS) -c $<
 
@@ -76,3 +100,13 @@ clean:
 
 .PHONY: all clean
 >>>>>>> origin/teuteu_test
+=======
+bin/%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+clean:
+	rm -f $(OBJS) $(TARGET)
+	rmdir bin 2>/dev/null || true
+
+.PHONY: all clean
+>>>>>>> origin/main
