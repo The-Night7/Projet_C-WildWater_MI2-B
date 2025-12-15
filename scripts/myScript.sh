@@ -202,6 +202,9 @@ EOF
             mv "$LEAK_FILE.new" "$LEAK_FILE"
             cp "$LEAK_FILE" "$CACHE_FILE"
 
+            # Calcul et affichage du volume total des fuites
+        awk -F';' '{if (NF==2) s+=$2} END {printf "Volume total de fuites: %.6fM.m3\n", s}' "$LEAK_FILE"
+
         # Traitement d'usines multiples (séparées par virgules)
         elif [[ "$PARAM" == *","* ]]; then
             IFS=',' read -ra FACILITIES <<< "$PARAM"
@@ -228,6 +231,15 @@ EOF
                 echo "$FAC;$VAL" >> "$CACHE_FILE"
             done
 
+            # Affichage des volumes de fuites pour chaque usine spécifiée
+            for FAC in "${FACILITIES[@]}"; do
+                FAC=$(echo "$FAC" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                VAL=$(grep -F "$(echo "$FAC" | sed 's/;/\\;/g')" "$LEAK_FILE" | tail -n1 | cut -d';' -f2)
+                if [ -n "$VAL" ]; then
+                    echo "Volume de fuites pour $FAC: ${VAL}M.m3"
+                fi
+            done
+
         # Traitement d'une seule usine
         elif [ "$PARAM" != "all" ]; then
             # Vérification du cache
@@ -236,12 +248,16 @@ EOF
                 if ! grep -q "$(echo "$PARAM" | sed 's/;/\\;/g')" "$LEAK_FILE" 2>/dev/null; then
                     echo "$PARAM;$CACHED_VAL" >> "$LEAK_FILE"
                 fi
+                VAL=$CACHED_VAL
             else
                 # Calcul des fuites
                 VAL=$("$EXEC_MAIN" "$DATAFILE" "$PARAM" 2> >(tee -a "$LOG_FILE"))
                 echo "$PARAM;$VAL" >> "$LEAK_FILE"
                 echo "$PARAM;$VAL" >> "$CACHE_FILE"
             fi
+
+            # Affichage du volume de fuites pour l'usine spécifiée
+            echo "Volume de fuites pour $PARAM: ${VAL}M.m3"
         fi
 
         # Optimisation du fichier de fuites (élimination des doublons)
@@ -249,9 +265,6 @@ EOF
             sort -u -t';' -k1,1 "$LEAK_FILE" > "${LEAK_FILE}.tmp"
             mv "${LEAK_FILE}.tmp" "$LEAK_FILE"
         fi
-
-        # Calcul du volume total de fuites
-        awk -F';' '{if (NF==2) s+=$2} END {printf "Volume total de fuites: %.6fM.m3\n", s}' "$LEAK_FILE"
         ;;
 
     *)
