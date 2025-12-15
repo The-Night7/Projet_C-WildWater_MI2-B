@@ -44,10 +44,11 @@ sudo apt install build-essential gnuplot make
 ```
 ## Utilisation :
 ```bash
+dos2unix scripts/myScript.sh
 ./scripts/myScript.sh histo max    # Capacité maximale
 ./scripts/myScript.sh histo src    # Volume sources
 ./scripts/myScript.sh histo real   # Volume réel traité
-./scripts/myScript.sh histo all
+./scripts/myScript.sh histo all    # Bonus : Graphique unifiant les trois modes
 ```
 **Exemple leaks**
 ```bash
