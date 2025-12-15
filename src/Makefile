@@ -4,12 +4,14 @@ CC      = gcc
 # using host architecture instructions. The -g flag is deliberately omitted
 # to avoid disabling certain optimizations.
 CFLAGS  = -Wall -Wextra -std=c99 -O2 -march=native
-LDFLAGS = -lm
+LDFLAGS = -lm -pthread
 
 # List of project source files. If you add other modules, simply
 # add the .c files to this variable so they are compiled automatically.
-SRCS    = main.c avl.c
+SRCS    = main.c avl.c multiThreaded.c
 OBJS    = $(addprefix bin/,$(SRCS:.c=.o))
+
+# Main executable
 TARGET  = bin/c-wildwater
 
 all: bin $(TARGET)

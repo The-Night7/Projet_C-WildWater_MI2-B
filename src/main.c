@@ -1,11 +1,12 @@
 /*
- * main.c - FINAL VERSION (Optimized + All Bonus + Max Leak Bonus)
+ * main.c - FINAL VERSION (Optimized + All Bonus + Max Leak Bonus + MultiThreaded)
  *
  * Analysis program for the C-WildWater drinking water network.
  * Features:
  * - Histogram generation (capacities, captured volumes, actual volumes)
  * - Calculation of losses downstream from a specific facility or all facilities
  * - Detection of critical section (worst absolute leak)
+ * - Multithreaded processing for leak calculations
  */
 
 #include <stdio.h>
@@ -13,6 +14,7 @@
 #include <string.h>
 #include <ctype.h>
 #include "avl.h"
+#include "multiThreaded.h"
 
 // Removes whitespace at the beginning and end of string
 static char* trim_whitespace(char* str) {
@@ -93,7 +95,28 @@ static double solve_leaks(Station* node, double input_vol, Station* u,
 }
 
 /**
- * Calculates leaks for all facilities in the tree
+ * Thread task wrapper for leak calculation
+ * @param arg Pointer to LeakTaskData structure
+ */
+static void leak_task_wrapper(void* arg) {
+    LeakTaskData* data = (LeakTaskData*)arg;
+
+    // Execute leak calculation
+    *(data->leak_result) = solve_leaks(
+        data->node,
+        data->input_vol,
+        data->facility,
+        data->max_leak_val,
+        data->max_from,
+        data->max_to
+    );
+
+    // Free the task data
+    free(data);
+}
+
+/**
+ * Calculates leaks for all facilities in the tree using multithreading
  *
  * @param node    Current tree node
  * @param output  Output file for results
@@ -101,31 +124,117 @@ static double solve_leaks(Station* node, double input_vol, Station* u,
 static void calculate_all_leaks(Station* node, FILE* output) {
     if (!node) return;
 
-    // Inorder traversal (left-root-right)
-    calculate_all_leaks(node->left, output);
+    // Setup thread system
+    Threads* thread_system = setupThreads();
 
-    // Calculate leaks if station has incoming volume
-    double starting_volume = (double)node->real_qty;
-    if (starting_volume > 0) {
-        // Variables for critical section bonus
-        double max_leak_val = 0.0;
-        char* max_from = NULL;
-        char* max_to = NULL;
+    // Create a NodeGroup to store results
+    NodeGroup results;
+    initNodeGroup(&results);
 
-        double leaks = solve_leaks(node, starting_volume, node,
-                                  &max_leak_val, &max_from, &max_to);
+    // Recursive function to traverse tree and schedule tasks
+    void schedule_leak_tasks(Station* current) {
+        if (!current) return;
 
-        // Convert to millions of m³
-        fprintf(output, "%s;%.6f\n", node->name, leaks / 1000.0);
+        // Process left subtree
+        schedule_leak_tasks(current->left);
 
-        // Display critical section (to stderr to avoid disrupting CSV)
-        // if (max_from && max_to && max_leak_val > 0.0) {
-        //     fprintf(stderr, "Facility %s - Critical section: %s → %s (%.6f M.m³)\n",
-        //             node->name, max_from, max_to, max_leak_val / 1000.0);
-        // }
+        // Calculate leaks if station has incoming volume
+        double starting_volume = (double)current->real_qty;
+        if (starting_volume > 0) {
+            // Allocate memory for results and critical section tracking
+            double* leak_result = malloc(sizeof(double));
+            double* max_leak_val = malloc(sizeof(double));
+            char** max_from = malloc(sizeof(char*));
+            char** max_to = malloc(sizeof(char*));
+
+            *leak_result = 0.0;
+            *max_leak_val = 0.0;
+            *max_from = NULL;
+            *max_to = NULL;
+
+            // Create task data
+            LeakTaskData* task_data = malloc(sizeof(LeakTaskData));
+            task_data->node = current;
+            task_data->input_vol = starting_volume;
+            task_data->facility = current;
+            task_data->leak_result = leak_result;
+            task_data->max_leak_val = max_leak_val;
+            task_data->max_from = max_from;
+            task_data->max_to = max_to;
+
+            // Create result node to store station name and result pointers
+            typedef struct {
+                char* name;
+                double* leak_result;
+                double* max_leak_val;
+                char** max_from;
+                char** max_to;
+            } ResultData;
+
+            ResultData* result_data = malloc(sizeof(ResultData));
+            result_data->name = current->name;
+            result_data->leak_result = leak_result;
+            result_data->max_leak_val = max_leak_val;
+            result_data->max_from = max_from;
+            result_data->max_to = max_to;
+
+            // Add result to results list
+            addContent(&results, result_data);
+
+            // Schedule task
+            addTaskInThreads(thread_system, leak_task_wrapper, task_data);
+        }
+
+        // Process right subtree
+        schedule_leak_tasks(current->right);
     }
 
-    calculate_all_leaks(node->right, output);
+    // Schedule all tasks
+    schedule_leak_tasks(node);
+
+    // Execute all tasks in parallel
+    handleThreads(thread_system);
+
+    // Write results to output
+    Node* current = results.head->next;  // Skip head node (empty)
+    while (current) {
+        typedef struct {
+            char* name;
+            double* leak_result;
+            double* max_leak_val;
+            char** max_from;
+            char** max_to;
+        } ResultData;
+
+        ResultData* data = (ResultData*)current->content;
+        if (data) {
+            // Convert to millions of m³
+            fprintf(output, "%s;%.6f\n", data->name, *(data->leak_result) / 1000.0);
+
+            // Display critical section (optional)
+            /*
+            if (*(data->max_from) && *(data->max_to) && *(data->max_leak_val) > 0.0) {
+                fprintf(stderr, "Facility %s - Critical section: %s → %s (%.6f M.m³)\n",
+                        data->name, *(data->max_from), *(data->max_to),
+                        *(data->max_leak_val) / 1000.0);
+            }
+            */
+
+            // Free allocated memory
+            free(data->leak_result);
+            free(data->max_leak_val);
+            free(data->max_from);
+            free(data->max_to);
+            free(data);
+        }
+
+        current = current->next;
+    }
+
+    // Free thread system
+    free(thread_system);
+
+    // Note: We don't need to call the original recursive functions since we've handled everything here
 }
 
 // Counts total number of stations in the tree
@@ -343,6 +452,7 @@ int main(int argc, char** argv) {
             double leaks = 0.0;
 
             if (starting_volume > 0) {
+                // For single facility, use the original non-threaded version
                 leaks = solve_leaks(start, starting_volume, start,
                                    &max_leak_val, &max_from, &max_to);
             }
@@ -361,8 +471,13 @@ int main(int argc, char** argv) {
             }
         }
     } else if (mode_all_leaks) {
-        // Calculate leaks for all facilities
+        // Calculate leaks for all facilities using multithreading
+        fprintf(stderr, "Starting multithreaded leak calculation...\n");
+        start = clock(); // Start timing
         calculate_all_leaks(root, stdout);
+        stop = clock(); // End timing
+        double time_spent = (double)(stop - start) / CLOCKS_PER_SEC;
+        fprintf(stderr, "Multithreaded calculation completed in %.2f seconds\n", time_spent);
     } else {
         // Generate histogram
         char mode_str[10];

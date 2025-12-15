@@ -40,4 +40,17 @@ typedef struct Station {
     int nb_children;      // Number of outgoing connections
 } Station;
 
+/**
+ * Structure for parallel leak calculation tasks
+ */
+typedef struct {
+    Station* node;            // Station to process
+    double input_vol;         // Input volume
+    Station* facility;        // Target facility
+    double* leak_result;      // Pointer to store result
+    double* max_leak_val;     // Pointer to track maximum leak
+    char** max_from;          // Pointer to track upstream station of critical section
+    char** max_to;            // Pointer to track downstream station of critical section
+} LeakTaskData;
+
 #endif /* STRUCTS_H */
