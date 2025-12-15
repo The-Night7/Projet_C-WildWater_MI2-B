@@ -13,6 +13,9 @@ src/c-wildwater
 *.swp
 *.swo
 
+# Fichiers images
+*.png
+
 # Fichiers de compilation
 *.out
 *.exe
@@ -29,6 +32,9 @@ bin/
 
 # Fichiers de logs
 *.log
+
+# Fichiers de données
+*.dat
 
 # Fichiers de système
 .DS_Store

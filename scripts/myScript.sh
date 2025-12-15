@@ -211,8 +211,65 @@ case "$COMMAND" in
             echo -e "${YELLOW}Création de l'histogramme combiné...${RESET}"
             
             # On garde les 50 plus grandes stations (fin du fichier trié)
-            tail -n 50 "$OUT_CSV" > "$GP_DATA"
-            
+            # Vérifier le format du fichier CSV pour s'assurer qu'il contient bien 4 colonnes
+            if [ $(head -n1 "$OUT_CSV" | grep -o ";" | wc -l) -eq 3 ]; then
+                # Format correct: Nom;Capacité;Source;Réel
+                tail -n 50 "$OUT_CSV" > "$GP_DATA"
+            else
+                # Le format n'est pas celui attendu, il faut vérifier la sortie du programme C
+                log_error "Format du CSV incorrect. Vérification de la structure..."
+                # Afficher les premières lignes pour diagnostic
+                head -n 3 "$OUT_CSV" >> "$LOG_FILE"
+
+                # Tentative de correction - Supposons que le programme C génère des données incomplètes
+                # Créons un fichier temporaire avec la structure attendue
+                echo "# Création d'un fichier de données de test pour le mode 'all'" >> "$LOG_FILE"
+
+                # Exécuter séparément les commandes pour obtenir max, src et real
+                # puis combiner les résultats
+                TMP_MAX="$DATA_DIR/.cache/.temp_max.csv"
+                TMP_SRC="$DATA_DIR/.cache/.temp_src.csv"
+                TMP_REAL="$DATA_DIR/.cache/.temp_real.csv"
+
+                echo -e "${YELLOW}Récupération des données max, src et real séparément...${RESET}"
+
+                "$EXEC_MAIN" "$DATAFILE" "max" > "$TMP_MAX"
+                "$EXEC_MAIN" "$DATAFILE" "src" > "$TMP_SRC"
+                "$EXEC_MAIN" "$DATAFILE" "real" > "$TMP_REAL"
+
+                # Combiner les données - Utiliser awk pour joindre les fichiers
+                awk -F';' '
+                    BEGIN { OFS=";" }
+                    FILENAME == ARGV[1] { max[$1] = $2; next }
+                    FILENAME == ARGV[2] { src[$1] = $2; next }
+                    FILENAME == ARGV[3] {
+                        if ($1 in max && $1 in src) {
+                            print $1, max[$1], src[$1], $2
+                        }
+                    }
+                ' "$TMP_MAX" "$TMP_SRC" "$TMP_REAL" | sort -t';' -k2,2gr | head -n 50 > "$GP_DATA"
+
+                # Nettoyage des fichiers temporaires
+                rm -f "$TMP_MAX" "$TMP_SRC" "$TMP_REAL"
+
+                # Vérifier que le fichier généré contient des données
+                if [ ! -s "$GP_DATA" ]; then
+                    log_error "Impossible de générer des données valides pour l'histogramme combiné."
+                    exit 1
+                fi
+
+                log_success "Données combinées générées avec succès"
+            fi
+
+            # Vérifier que le fichier de données est bien formaté pour gnuplot
+            echo -e "${YELLOW}Vérification du format des données...${RESET}"
+            if [ $(head -n1 "$GP_DATA" | awk -F';' '{print NF}') -ne 4 ]; then
+                log_error "Le fichier de données n'a pas le bon format (4 colonnes attendues)."
+                # Afficher un exemple des données pour diagnostic
+                head -n 3 "$GP_DATA" >> "$LOG_FILE"
+                exit 1
+            fi
+
             gnuplot -persist <<EOF
 set terminal png size 1600,900
 set output '$IMG_ALL'
@@ -234,7 +291,55 @@ plot '$GP_DATA' using 4:xtic(1) title 'Réel (Sortie)' lc rgb '#3366CC', \
 '' using (\$3-\$4) title 'Pertes (Transport)' lc rgb '#DC3912', \
 '' using (\$2-\$3) title 'Capacité Non Utilisée' lc rgb '#109618'
 EOF
-            log_success "Graphique combiné généré : ${BOLD}$IMG_ALL${RESET}"
+
+            # Vérifier que le graphique a bien été généré
+            if [ -f "$IMG_ALL" ] && [ -s "$IMG_ALL" ]; then
+                log_success "Graphique combiné généré : ${BOLD}$IMG_ALL${RESET}"
+            else
+                log_error "Échec de génération du graphique combiné."
+                # Essayer avec une approche plus simple
+                echo -e "${YELLOW}Tentative avec une approche alternative...${RESET}"
+
+                # Créer un script gnuplot temporaire avec plus de debug
+                GNUPLOT_SCRIPT="$DATA_DIR/.gnuplot_script.txt"
+                cat > "$GNUPLOT_SCRIPT" <<EOF
+set terminal png size 1600,900
+set output '$IMG_ALL'
+set title "Histogramme Cumulé (Capacité vs Pertes vs Réel)"
+set style data histograms
+set style histogram rowstacked
+set style fill solid 1.0 border -1
+set datafile separator ';'
+set ylabel 'Volume (M.m3)'
+set xtics rotate by -45 font ',8'
+set key outside top center horizontal
+set grid y
+# Debug - Afficher les données
+print "Lecture du fichier: $GP_DATA"
+stats '$GP_DATA' using 2 nooutput
+print "Nombre de lignes valides pour colonne 2: ", STATS_records
+stats '$GP_DATA' using 3 nooutput
+print "Nombre de lignes valides pour colonne 3: ", STATS_records
+stats '$GP_DATA' using 4 nooutput
+print "Nombre de lignes valides pour colonne 4: ", STATS_records
+# Simplifier le plot pour éviter les erreurs
+plot '$GP_DATA' using 2:xtic(1) title 'Capacité' lc rgb '#109618', \
+     '$GP_DATA' using 3 title 'Source' lc rgb '#DC3912', \
+     '$GP_DATA' using 4 title 'Réel' lc rgb '#3366CC'
+EOF
+
+                # Exécuter gnuplot avec le script de debug
+                gnuplot "$GNUPLOT_SCRIPT" 2>> "$LOG_FILE"
+
+                if [ -f "$IMG_ALL" ] && [ -s "$IMG_ALL" ]; then
+                    log_success "Graphique alternatif généré : ${BOLD}$IMG_ALL${RESET}"
+                else
+                    log_error "Échec de la génération du graphique alternatif."
+                fi
+
+                rm -f "$GNUPLOT_SCRIPT"
+            fi
+
             rm -f "$GP_DATA"
         else
             # ---------------------------------------------------------
