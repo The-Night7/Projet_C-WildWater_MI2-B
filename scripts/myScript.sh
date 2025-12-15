@@ -13,8 +13,8 @@
 #   - <fichier_donnees>: Optionnel, par défaut data/c-wildwater_v3.dat
 #   - <mode>: 'histo' (histogramme) ou 'leaks' (fuites)
 #   - <argument>:
-#     * En mode 'histo': max, src ou real
-#     * En mode 'leaks': identifiant d'usine ou 'all'
+#     * En mode 'histo': max, src, real ou all
+#     * En mode 'leaks': identifiant d'usine, liste d'usines séparées par virgules, ou 'all' (bonus)
 # -----------------------------------------------------------------------------
 
 # Positionnement à la racine du projet
@@ -39,15 +39,18 @@ usage() {
 
       <fichier_donnees>  Chemin du fichier .dat ou .csv (optionnel).
                           Si absent, utilise $DEFAULT_INPUT.
-      histo              Génère un histogramme (paramètre: max|src|real).
+      histo              Génère un histogramme (paramètre: max|src|real|all).
       leaks              Calcule les pertes pour l'usine donnée ou toutes les usines.
-                          Paramètre: nom d'usine ou "all" pour toutes les usines.
+                          Paramètre: nom d'usine, liste d'usines séparées par virgules,
+                          ou "all" pour toutes les usines.
 
     Exemples:
       $0 histo max
+      $0 histo all
       $0 data/mon_fichier.dat histo src
       $0 leaks Facility\ complex\ #RH400057F
       $0 data/mon_fichier.dat leaks "Facility complex #RH400057F"
+      $0 leaks "Facility A,Facility B,Facility C"
       $0 leaks all
 EOF
     exit 1
@@ -65,6 +68,9 @@ fi
 
 # Initialisation du log
 echo "=== Démarrage du traitement $(date '+%Y-%m-%d %H:%M:%S') ===" > "$LOG_FILE"
+
+# Début du chronomètre global (en ms)
+GLOBAL_START=$(date +%s%3N)
 
 # Analyse des arguments: fichier de données et mode
 if [ "$1" = "histo" ] || [ "$1" = "leaks" ]; then
@@ -104,70 +110,148 @@ case "$COMMAND" in
     histo)
         # Vérification du paramètre d'histogramme
         case "$PARAM" in
-            max|src|real) ;;
+            max|src|real|all) ;;
             *)
-                log_progress "Erreur: le mode d'histogramme doit être 'max', 'src' ou 'real'."
+                log_progress "Erreur: le mode d'histogramme doit être 'max', 'src', 'real' ou 'all'."
                 exit 1
                 ;;
         esac
+
+        log_progress "Mode Histogramme ($PARAM)"
 
         # Génération du fichier CSV
         OUT_CSV="$DATA_DIR/vol_${PARAM}.csv"
         "$EXEC_MAIN" "$DATAFILE" "$PARAM" | LC_ALL=C sort -t';' -k2,2g > "$OUT_CSV"
 
         if [ ! -s "$OUT_CSV" ]; then
-            log_progress "Erreur: CSV vide."
+            log_progress "Erreur: CSV vide (Aucune donnée générée)."
             exit 1
         fi
 
-        # Création des graphiques avec gnuplot
-        # 1. Top 10 des plus grandes valeurs
-        GP_BIG="$DATA_DIR/data_big.dat"
-        tail -n 10 "$OUT_CSV" > "$GP_BIG"
-        IMG_BIG="$GRAPH_DIR/vol_${PARAM}_big.png"
-
-        gnuplot -persist <<EOF
-            set terminal png size 1200,800
-            set output '$IMG_BIG'
-            set title "Top 10 Stations ($PARAM) - M.m3"
-            set yrange [0:*]
-            set style data histograms
-            set style fill solid 1.0 border -1
-            set datafile separator ';'
-            set ylabel 'M.m3'
-            set xtics rotate by -45
-            plot '$GP_BIG' using 2:xtic(1) title 'Volume' lc rgb 'blue'
+        # --- BRANCHEMENT : MODE BONUS "ALL" ou MODES CLASSIQUES ---
+        if [ "$PARAM" = "all" ]; then
+            # ---------------------------------------------------------
+            # BONUS 1 : Histogramme combiné (Capacité / Source / Réel)
+            # ---------------------------------------------------------
+            IMG_ALL="$GRAPH_DIR/vol_all.png"
+            GP_DATA="$DATA_DIR/data_all.dat"
+            
+            # On garde les 50 plus grandes stations (fin du fichier trié)
+            tail -n 50 "$OUT_CSV" > "$GP_DATA"
+            
+            gnuplot -persist <<EOF
+set terminal png size 1600,900
+set output '$IMG_ALL'
+set title "Histogramme Cumulé (Capacité vs Pertes vs Réel)"
+set style data histograms
+set style histogram rowstacked
+set style fill solid 1.0 border -1
+set datafile separator ';'
+set ylabel 'Volume (M.m3)'
+set xtics rotate by -45 font ',8'
+set key outside top center horizontal
+set grid y
+# Rappel colonnes CSV : 1:Nom, 2:Capacité, 3:Source, 4:Réel
+# Empilement (Bas -> Haut) :
+# 1. Bleu : Réel (col 4)
+# 2. Rouge : Perte (Source - Réel) -> (\$3-\$4)
+# 3. Vert : Capacité Restante (Max - Source) -> (\$2-\$3)
+plot '$GP_DATA' using 4:xtic(1) title 'Réel (Sortie)' lc rgb '#3366CC', \
+'' using (\$3-\$4) title 'Pertes (Transport)' lc rgb '#DC3912', \
+'' using (\$2-\$3) title 'Capacité Non Utilisée' lc rgb '#109618'
 EOF
+            log_progress "Graphique généré : $IMG_ALL"
+            rm -f "$GP_DATA"
+        else
+            # ---------------------------------------------------------
+            # MODES CLASSIQUES (max, src, real)
+            # ---------------------------------------------------------
+            # 1. Top 10 (Les plus grands)
+            GP_BIG="$DATA_DIR/data_big.dat"
+            tail -n 10 "$OUT_CSV" > "$GP_BIG"
+            IMG_BIG="$GRAPH_DIR/vol_${PARAM}_big.png"
 
-        # 2. Bottom 50 des plus petites valeurs
-        GP_SMALL="$DATA_DIR/data_small.dat"
-        head -n 50 "$OUT_CSV" > "$GP_SMALL"
-        IMG_SMALL="$GRAPH_DIR/vol_${PARAM}_small.png"
-
-        gnuplot -persist <<EOF
-            set terminal png size 1600,900
-            set output '$IMG_SMALL'
-            set title "Bottom 50 Stations ($PARAM) - M.m3"
-            set key outside top center horizontal
-            set style data histograms
-            set boxwidth 0.8 relative
-            set style fill solid 1.0 border -1
-            set datafile separator ';'
-            set ylabel 'Volume (M.m3)'
-            set format y "%.4f"
-            set yrange [*:*]
-            set xtics rotate by -90 font ',8'
-            plot '$GP_SMALL' using 2:xtic(1) title 'Volume' lc rgb 'red'
+            gnuplot -persist <<EOF
+set terminal png size 1200,800
+set output '$IMG_BIG'
+set title "Top 10 Stations ($PARAM) - M.m3"
+set yrange [0:*]
+set style data histograms
+set style fill solid 1.0 border -1
+set datafile separator ';'
+set ylabel 'M.m3'
+set xtics rotate by -45
+plot '$GP_BIG' using 2:xtic(1) title 'Volume' lc rgb 'blue'
 EOF
+            log_progress "Image Top 10 générée: $IMG_BIG"
 
-        # Nettoyage des fichiers temporaires
-        rm -f "$GP_BIG" "$GP_SMALL"
+            # 2. Bottom 50 (Les plus petits)
+            GP_SMALL="$DATA_DIR/data_small.dat"
+            head -n 50 "$OUT_CSV" > "$GP_SMALL"
+            IMG_SMALL="$GRAPH_DIR/vol_${PARAM}_small.png"
+
+            gnuplot -persist <<EOF
+set terminal png size 1600,900
+set output '$IMG_SMALL'
+set title "Bottom 50 Stations ($PARAM) - M.m3"
+set key outside top center horizontal
+set style data histograms
+set boxwidth 0.8 relative
+set style fill solid 1.0 border -1
+set datafile separator ';'
+set ylabel 'Volume (M.m3)'
+set format y "%.4f"
+set yrange [*:*]
+set xtics rotate by -90 font ',8'
+plot '$GP_SMALL' using 2:xtic(1) title 'Volume' lc rgb 'red'
+EOF
+            log_progress "Image Bottom 50 générée: $IMG_SMALL"
+            
+            # Nettoyage des fichiers temporaires
+            rm -f "$GP_BIG" "$GP_SMALL"
+        fi
         ;;
 
     leaks)
+        log_progress "Mode Fuites ($PARAM)"
         LEAK_FILE="$DATA_DIR/leaks.dat"
         CACHE_FILE="$DATA_DIR/.leaks_cache.dat"
         touch "$CACHE_FILE"
+
+        # Fonction interne pour traiter une usine
+        process_factory() {
+            local FACTORY="$1"
+            # Nettoyage espaces
+            FACTORY=$(echo "$FACTORY" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            
+            # Check Cache
+            CACHED_VAL=$(grep -F "$(echo "$FACTORY" | sed 's/;/\\;/g')" "$CACHE_FILE" | tail -n1 | cut -d';' -f2)
+            if [ -n "$CACHED_VAL" ]; then
+                log_progress "[$FACTORY] Résultat en cache: $CACHED_VAL M.m3"
+                if ! grep -q "$(echo "$FACTORY" | sed 's/;/\\;/g')" "$LEAK_FILE" 2>/dev/null; then
+                    echo "$FACTORY;$CACHED_VAL" >> "$LEAK_FILE"
+                fi
+                echo "Volume de fuites pour $FACTORY: ${CACHED_VAL}M.m3"
+                return
+            fi
+            
+            # Calcul C
+            T_START=$(date +%s%3N)
+            VAL=$("$EXEC_MAIN" "$DATAFILE" "$FACTORY" 2> >(tee -a "$LOG_FILE"))
+            T_END=$(date +%s%3N)
+            DUREE=$((T_END - T_START))
+            
+            if [ "$VAL" = "-1" ]; then
+                log_progress "[$FACTORY] Usine introuvable (${DUREE}ms)"
+                echo "$FACTORY;-1" >> "$LEAK_FILE"
+                echo "$FACTORY;-1" >> "$CACHE_FILE"
+            else
+                log_progress "[$FACTORY] Fuites: $VAL M.m3 (calculé en ${DUREE}ms)"
+                echo "$FACTORY;$VAL" >> "$LEAK_FILE"
+                echo "$FACTORY;$VAL" >> "$CACHE_FILE"
+                echo "Volume de fuites pour $FACTORY: ${VAL}M.m3"
+            fi
+        }
 
         # Mode "all": calcul pour toutes les usines
         if [ "$PARAM" = "all" ]; then
@@ -203,61 +287,17 @@ EOF
             cp "$LEAK_FILE" "$CACHE_FILE"
 
             # Calcul et affichage du volume total des fuites
-        awk -F';' '{if (NF==2) s+=$2} END {printf "Volume total de fuites: %.6fM.m3\n", s}' "$LEAK_FILE"
+            awk -F';' '{if (NF==2) s+=$2} END {printf "Volume total de fuites: %.6fM.m3\n", s}' "$LEAK_FILE"
 
         # Traitement d'usines multiples (séparées par virgules)
         elif [[ "$PARAM" == *","* ]]; then
-            IFS=',' read -ra FACILITIES <<< "$PARAM"
-
-            for FAC in "${FACILITIES[@]}"; do
-                # Suppression des espaces
-                FAC=$(echo "$FAC" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-
-                # Vérification du cache
-                CACHED_VAL=$(grep -F "$(echo "$FAC" | sed 's/;/\\;/g')" "$CACHE_FILE" | tail -n1 | cut -d';' -f2)
-                if [ -n "$CACHED_VAL" ]; then
-                    # Utilisation de la valeur en cache
-                    if ! grep -q "$(echo "$FAC" | sed 's/;/\\;/g')" "$LEAK_FILE" 2>/dev/null; then
-                        echo "$FAC;$CACHED_VAL" >> "$LEAK_FILE"
-                    fi
-                    continue
-                fi
-
-                # Calcul des fuites pour cette usine
-                VAL=$("$EXEC_MAIN" "$DATAFILE" "$FAC" 2> >(tee -a "$LOG_FILE"))
-
-                # Enregistrement du résultat
-                echo "$FAC;$VAL" >> "$LEAK_FILE"
-                echo "$FAC;$VAL" >> "$CACHE_FILE"
+            IFS=',' read -ra FACTORIES <<< "$PARAM"
+            for FAC in "${FACTORIES[@]}"; do
+                process_factory "$FAC"
             done
-
-            # Affichage des volumes de fuites pour chaque usine spécifiée
-            for FAC in "${FACILITIES[@]}"; do
-                FAC=$(echo "$FAC" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-                VAL=$(grep -F "$(echo "$FAC" | sed 's/;/\\;/g')" "$LEAK_FILE" | tail -n1 | cut -d';' -f2)
-                if [ -n "$VAL" ]; then
-                    echo "Volume de fuites pour $FAC: ${VAL}M.m3"
-                fi
-            done
-
         # Traitement d'une seule usine
-        elif [ "$PARAM" != "all" ]; then
-            # Vérification du cache
-            CACHED_VAL=$(grep -F "$(echo "$PARAM" | sed 's/;/\\;/g')" "$CACHE_FILE" | tail -n1 | cut -d';' -f2)
-            if [ -n "$CACHED_VAL" ]; then
-                if ! grep -q "$(echo "$PARAM" | sed 's/;/\\;/g')" "$LEAK_FILE" 2>/dev/null; then
-                    echo "$PARAM;$CACHED_VAL" >> "$LEAK_FILE"
-                fi
-                VAL=$CACHED_VAL
-            else
-                # Calcul des fuites
-                VAL=$("$EXEC_MAIN" "$DATAFILE" "$PARAM" 2> >(tee -a "$LOG_FILE"))
-                echo "$PARAM;$VAL" >> "$LEAK_FILE"
-                echo "$PARAM;$VAL" >> "$CACHE_FILE"
-            fi
-
-            # Affichage du volume de fuites pour l'usine spécifiée
-            echo "Volume de fuites pour $PARAM: ${VAL}M.m3"
+        else
+            process_factory "$PARAM"
         fi
 
         # Optimisation du fichier de fuites (élimination des doublons)
@@ -272,6 +312,11 @@ EOF
         exit 1
         ;;
 esac
+
+# Fin du chronomètre global
+GLOBAL_END=$(date +%s%3N)
+TOTAL_DUREE=$((GLOBAL_END - GLOBAL_START))
+log_progress "Durée totale du traitement : ${TOTAL_DUREE} ms"
 
 log_progress "Traitement terminé"
 echo "=== Fin du traitement $(date '+%Y-%m-%d %H:%M:%S') ===" >> "$LOG_FILE"
