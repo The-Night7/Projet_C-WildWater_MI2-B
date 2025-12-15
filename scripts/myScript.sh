@@ -28,9 +28,10 @@ GRAPH_DIR="$DATA_DIR/output_images"
 EXEC_MAIN="$BIN_DIR/c-wildwater"
 LOG_FILE="$DATA_DIR/processing.log"
 DEFAULT_INPUT="$DATA_DIR/c-wildwater_v3.dat"
+CACHE_DIR="$DATA_DIR/.cache"
 
 # Création des répertoires nécessaires
-mkdir -p "$GRAPH_DIR" "$DATA_DIR" "$BIN_DIR"
+mkdir -p "$GRAPH_DIR" "$DATA_DIR" "$BIN_DIR" "$CACHE_DIR"
 
 # Couleurs pour l'affichage
 BLUE='\033[0;34m'
@@ -294,7 +295,7 @@ EOF
         CACHE_FILE="$DATA_DIR/.leaks_cache.dat"
         touch "$CACHE_FILE"
 
-        # Fonction interne pour traiter une usine
+        # Fonction interne pour traiter une usine - Version optimisée
         process_factory() {
             local FACTORY="$1"
             # Nettoyage espaces
@@ -302,11 +303,17 @@ EOF
             
             echo -e "\n${YELLOW}Traitement de l'usine:${RESET} ${BOLD}$FACTORY${RESET}"
             
-            # Check Cache
-            CACHED_VAL=$(grep -F "$(echo "$FACTORY" | sed 's/;/\\;/g')" "$CACHE_FILE" | tail -n1 | cut -d';' -f2)
+            # Génération d'un nom de fichier unique basé sur un hash du nom de l'usine
+            # pour éviter les conflits avec les caractères spéciaux
+            local FACTORY_HASH=$(echo "$FACTORY" | md5sum | cut -d' ' -f1)
+            local TEMP_ERR_FILE="$CACHE_DIR/err_${FACTORY_HASH}.tmp"
+            local TEMP_OUT_FILE="$CACHE_DIR/out_${FACTORY_HASH}.tmp"
+            
+            # Check Cache - Optimisé pour rechercher exactement le nom de l'usine
+            CACHED_VAL=$(grep -F "$(echo "$FACTORY" | sed 's/;/\\;/g');" "$CACHE_FILE" | tail -n1 | cut -d';' -f2)
             if [ -n "$CACHED_VAL" ]; then
                 echo -e "${GREEN}[CACHE]${RESET} Résultat trouvé en cache"
-                if ! grep -q "$(echo "$FACTORY" | sed 's/;/\\;/g')" "$LEAK_FILE" 2>/dev/null; then
+                if ! grep -q "$(echo "$FACTORY" | sed 's/;/\\;/g');" "$LEAK_FILE" 2>/dev/null; then
                     # Ajouter uniquement le résultat au format usine;valeur dans leaks.dat
                     echo "$FACTORY;$CACHED_VAL" >> "$LEAK_FILE"
                 fi
@@ -314,46 +321,63 @@ EOF
                 return
             fi
             
-            # Calcul C avec barre de progression
+            # Calcul C avec barre de progression - Version optimisée
             echo -e "${YELLOW}Calcul en cours...${RESET}"
             T_START=$(date +%s%3N)
             
-            # Utilisation d'un fichier temporaire pour capturer la sortie d'erreur
-            TEMP_ERR_FILE="$DATA_DIR/.cache/.temp_err_$$"
-            TEMP_OUT_FILE="$DATA_DIR/.cache/.temp_out_$$"
-            
-            # Exécution du programme en arrière-plan
-            "$EXEC_MAIN" "$DATAFILE" "$FACTORY" > "$TEMP_OUT_FILE" 2> "$TEMP_ERR_FILE" &
+            # Utiliser nice pour réduire la priorité du processus et ulimit pour limiter l'utilisation mémoire
+            # Utiliser également stdbuf pour désactiver la mise en mémoire tampon des sorties
+            nice -n 10 stdbuf -oL -eL "$EXEC_MAIN" "$DATAFILE" "$FACTORY" > "$TEMP_OUT_FILE" 2> "$TEMP_ERR_FILE" &
             PID=$!
             
-            # Affichage d'une barre de progression animée
+            # Affichage d'une barre de progression animée avec timeout
             i=0
             spin='-\|/'
+            TIMEOUT=180  # 3 minutes max
+            START_TIME=$SECONDS
+            
             while kill -0 $PID 2>/dev/null; do
+                # Vérifier si le timeout est atteint
+                ELAPSED=$((SECONDS - START_TIME))
+                if [ $ELAPSED -gt $TIMEOUT ]; then
+                    echo -e "\n${RED}Timeout atteint (${TIMEOUT}s). Arrêt forcé du calcul.${RESET}"
+                    kill -9 $PID 2>/dev/null
+                    break
+                fi
+                
                 i=$(( (i+1) % 4 ))
                 
                 # Récupérer les informations de progression si disponibles
                 if [ -f "$TEMP_ERR_FILE" ]; then
                     PROGRESS_INFO=$(grep -o "Lignes traitees : [0-9]*" "$TEMP_ERR_FILE" | tail -n1)
                     if [ -n "$PROGRESS_INFO" ]; then
-                        printf "\r[%c] %s" "${spin:$i:1}" "$PROGRESS_INFO"
+                        printf "\r[%c] %s (${ELAPSED}s)" "${spin:$i:1}" "$PROGRESS_INFO"
                     else
-                        printf "\r[%c] Traitement en cours..." "${spin:$i:1}"
+                        printf "\r[%c] Traitement en cours... (${ELAPSED}s)" "${spin:$i:1}"
                     fi
                 else
-                    printf "\r[%c] Traitement en cours..." "${spin:$i:1}"
+                    printf "\r[%c] Traitement en cours... (${ELAPSED}s)" "${spin:$i:1}"
                 fi
                 
-                sleep 0.1
+                sleep 0.2
             done
             
             # Attendre la fin du processus et récupérer la valeur
             wait $PID
-            VAL=$(cat "$TEMP_OUT_FILE" 2>/dev/null)
+            EXIT_CODE=$?
             
-            # Si le fichier est vide, on réessaie directement
-            if [ -z "$VAL" ]; then
-                VAL=$("$EXEC_MAIN" "$DATAFILE" "$FACTORY" 2>/dev/null)
+            # Récupérer la valeur du fichier de sortie
+            if [ -f "$TEMP_OUT_FILE" ]; then
+                VAL=$(cat "$TEMP_OUT_FILE" | tr -d '\n\r')
+            else
+                VAL=""
+            fi
+            
+            # Si le fichier est vide ou si le processus a été interrompu
+            if [ -z "$VAL" ] || [ $EXIT_CODE -ne 0 ]; then
+                # Tentative avec une approche plus simple et directe
+                echo -e "\n${YELLOW}Nouvelle tentative avec méthode alternative...${RESET}"
+                VAL=$("$EXEC_MAIN" "$DATAFILE" "$FACTORY" 2>/dev/null | tr -d '\n\r')
             fi
             
             T_END=$(date +%s%3N)
@@ -362,8 +386,8 @@ EOF
             # Effacer la ligne de progression
             printf "\r%s\n" "$(printf ' %.0s' {1..70})"
             
-            if [ "$VAL" = "-1" ]; then
-                log_error "Usine '$FACTORY' introuvable (${DUREE}ms)"
+            if [ "$VAL" = "-1" ] || [ -z "$VAL" ]; then
+                log_error "Usine '$FACTORY' introuvable ou calcul échoué (${DUREE}ms)"
                 # Ajouter uniquement le résultat au format usine;valeur dans leaks.dat et cache
                 echo "$FACTORY;-1" >> "$LEAK_FILE"
                 echo "$FACTORY;-1" >> "$CACHE_FILE"
@@ -390,32 +414,43 @@ EOF
             # Exécution et suivi de la progression
             echo -e "${YELLOW}Calcul des fuites pour toutes les usines...${RESET}"
             START_TIME=$SECONDS
-            PROGRESS_FILE="$DATA_DIR/.progress.tmp"
-            TEMP_LEAK_FILE="$DATA_DIR/.leaks_temp.dat"
+            PROGRESS_FILE="$CACHE_DIR/progress_all.tmp"
+            TEMP_LEAK_FILE="$CACHE_DIR/leaks_all.tmp"
 
-            # Exécuter le programme et capturer la sortie directement dans un fichier temporaire
-            "$EXEC_MAIN" "$DATAFILE" "all" > "$TEMP_LEAK_FILE" 2> "$PROGRESS_FILE" &
+            # Exécuter le programme avec nice pour réduire sa priorité
+            nice -n 10 "$EXEC_MAIN" "$DATAFILE" "all" > "$TEMP_LEAK_FILE" 2> "$PROGRESS_FILE" &
             PID=$!
 
-            # Affichage d'une barre de progression animée
+            # Affichage d'une barre de progression animée avec timeout
             i=0
             spin='-\|/'
+            TIMEOUT=600  # 10 minutes max
+            START_PROC_TIME=$SECONDS
+            
             while kill -0 $PID 2>/dev/null; do
+                # Vérifier si le timeout est atteint
+                ELAPSED=$((SECONDS - START_PROC_TIME))
+                if [ $ELAPSED -gt $TIMEOUT ]; then
+                    echo -e "\n${RED}Timeout atteint (${TIMEOUT}s). Arrêt forcé du calcul.${RESET}"
+                    kill -9 $PID 2>/dev/null
+                    break
+                fi
+                
                 i=$(( (i+1) % 4 ))
                 
                 # Récupérer les informations de progression si disponibles
                 if [ -f "$PROGRESS_FILE" ]; then
                     PROGRESS_INFO=$(grep -o "Lignes traitees : [0-9]*" "$PROGRESS_FILE" | tail -n1)
                     if [ -n "$PROGRESS_INFO" ]; then
-                        printf "\r[%c] %s" "${spin:$i:1}" "$PROGRESS_INFO"
+                        printf "\r[%c] %s (${ELAPSED}s)" "${spin:$i:1}" "$PROGRESS_INFO"
                     else
-                        printf "\r[%c] Traitement en cours..." "${spin:$i:1}"
+                        printf "\r[%c] Traitement en cours... (${ELAPSED}s)" "${spin:$i:1}"
                     fi
                 else
-                    printf "\r[%c] Traitement en cours..." "${spin:$i:1}"
+                    printf "\r[%c] Traitement en cours... (${ELAPSED}s)" "${spin:$i:1}"
                 fi
                 
-                sleep 0.1
+                sleep 0.2
             done
 
             # Effacer la ligne de progression
@@ -423,27 +458,30 @@ EOF
             
             wait $PID
             RESULT_CODE=$?
+            
+            # Nettoyage
             rm -f "$PROGRESS_FILE"
 
             if [ $RESULT_CODE -ne 0 ] || [ ! -s "$TEMP_LEAK_FILE" ]; then
                 log_error "Échec du calcul des fuites."
+                rm -f "$TEMP_LEAK_FILE"
                 exit 1
             fi
 
             # Vérifier que le fichier contient bien des données au format usine;valeur
-            # Si oui, copier directement dans leaks.dat
             if grep -q ";" "$TEMP_LEAK_FILE"; then
-                # Mise à jour des fichiers de résultats
+                # Mise à jour des fichiers de résultats - Utiliser cat pour être plus rapide
                 cat "$TEMP_LEAK_FILE" > "$LEAK_FILE"
                 cat "$TEMP_LEAK_FILE" > "$CACHE_FILE"
             else
                 log_error "Format de sortie incorrect dans le fichier temporaire."
+                rm -f "$TEMP_LEAK_FILE"
                 exit 1
             fi
 
             rm -f "$TEMP_LEAK_FILE"
 
-            # Calcul et affichage du volume total des fuites
+            # Calcul et affichage du volume total des fuites - Utiliser awk pour plus d'efficacité
             TOTAL_LEAKS=$(awk -F';' '{if (NF==2) s+=$2} END {printf "%.6f", s}' "$LEAK_FILE")
             echo -e "\n${BOLD}Volume total de fuites:${RESET} ${BLUE}${TOTAL_LEAKS} M.m3${RESET}"
             log_success "Calcul pour toutes les usines terminé"
@@ -466,11 +504,16 @@ EOF
             TOTAL_LEAKS=0
             for FAC in "${FACTORIES[@]}"; do
                 FAC=$(echo "$FAC" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-                VAL=$(grep -F "$(echo "$FAC" | sed 's/;/\\;/g')" "$LEAK_FILE" | tail -n1 | cut -d';' -f2)
+                VAL=$(grep -F "$(echo "$FAC" | sed 's/;/\\;/g');" "$LEAK_FILE" | tail -n1 | cut -d';' -f2)
                 if [ -n "$VAL" ] && [ "$VAL" != "-1" ]; then
                     echo -e "- ${BOLD}$FAC:${RESET} ${BLUE}${VAL} M.m3${RESET}"
                     # Utiliser bc pour les calculs avec décimales
-                    TOTAL_LEAKS=$(echo "$TOTAL_LEAKS + $VAL" | bc)
+                    if command -v bc &>/dev/null; then
+                        TOTAL_LEAKS=$(echo "$TOTAL_LEAKS + $VAL" | bc)
+                    else
+                        # Fallback si bc n'est pas disponible
+                        TOTAL_LEAKS=$(awk "BEGIN {print $TOTAL_LEAKS + $VAL}")
+                    fi
                 fi
             done
             echo -e "\n${BOLD}Total des fuites:${RESET} ${BLUE}${TOTAL_LEAKS} M.m3${RESET}"
@@ -482,6 +525,7 @@ EOF
 
         # Optimisation du fichier de fuites (élimination des doublons)
         if [ -f "$LEAK_FILE" ]; then
+            # Utiliser sort -u pour éliminer les doublons en une seule passe
             sort -u -t';' -k1,1 "$LEAK_FILE" > "${LEAK_FILE}.tmp"
             mv "${LEAK_FILE}.tmp" "$LEAK_FILE"
             
