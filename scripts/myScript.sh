@@ -307,6 +307,7 @@ EOF
             if [ -n "$CACHED_VAL" ]; then
                 echo -e "${GREEN}[CACHE]${RESET} Résultat trouvé en cache"
                 if ! grep -q "$(echo "$FACTORY" | sed 's/;/\\;/g')" "$LEAK_FILE" 2>/dev/null; then
+                    # Ajouter uniquement le résultat au format usine;valeur dans leaks.dat
                     echo "$FACTORY;$CACHED_VAL" >> "$LEAK_FILE"
                 fi
                 echo -e "${BOLD}Volume de fuites pour $FACTORY:${RESET} ${BLUE}${CACHED_VAL} M.m3${RESET}"
@@ -318,10 +319,11 @@ EOF
             T_START=$(date +%s%3N)
             
             # Utilisation d'un fichier temporaire pour capturer la sortie d'erreur
-            TEMP_ERR_FILE="$DATA_DIR/.temp_err_$$"
+            TEMP_ERR_FILE="$DATA_DIR/.cache/.temp_err_$$"
+            TEMP_OUT_FILE="$DATA_DIR/.cache/.temp_out_$$"
             
             # Exécution du programme en arrière-plan
-            "$EXEC_MAIN" "$DATAFILE" "$FACTORY" 2> "$TEMP_ERR_FILE" &
+            "$EXEC_MAIN" "$DATAFILE" "$FACTORY" > "$TEMP_OUT_FILE" 2> "$TEMP_ERR_FILE" &
             PID=$!
             
             # Affichage d'une barre de progression animée
@@ -347,7 +349,9 @@ EOF
             
             # Attendre la fin du processus et récupérer la valeur
             wait $PID
-            VAL=$(cat "$DATA_DIR/.temp_output" 2>/dev/null)
+            VAL=$(cat "$TEMP_OUT_FILE" 2>/dev/null)
+            
+            # Si le fichier est vide, on réessaie directement
             if [ -z "$VAL" ]; then
                 VAL=$("$EXEC_MAIN" "$DATAFILE" "$FACTORY" 2>/dev/null)
             fi
@@ -360,17 +364,19 @@ EOF
             
             if [ "$VAL" = "-1" ]; then
                 log_error "Usine '$FACTORY' introuvable (${DUREE}ms)"
+                # Ajouter uniquement le résultat au format usine;valeur dans leaks.dat et cache
                 echo "$FACTORY;-1" >> "$LEAK_FILE"
                 echo "$FACTORY;-1" >> "$CACHE_FILE"
             else
                 log_success "Calcul terminé en ${DUREE}ms"
+                # Ajouter uniquement le résultat au format usine;valeur dans leaks.dat et cache
                 echo "$FACTORY;$VAL" >> "$LEAK_FILE"
                 echo "$FACTORY;$VAL" >> "$CACHE_FILE"
                 echo -e "${BOLD}Volume de fuites pour $FACTORY:${RESET} ${BLUE}${VAL} M.m3${RESET}"
             fi
             
             # Nettoyage
-            rm -f "$TEMP_ERR_FILE" "$DATA_DIR/.temp_output"
+            rm -f "$TEMP_ERR_FILE" "$TEMP_OUT_FILE"
         }
 
         # Mode "all": calcul pour toutes les usines
@@ -385,8 +391,10 @@ EOF
             echo -e "${YELLOW}Calcul des fuites pour toutes les usines...${RESET}"
             START_TIME=$SECONDS
             PROGRESS_FILE="$DATA_DIR/.progress.tmp"
+            TEMP_LEAK_FILE="$DATA_DIR/.leaks_temp.dat"
 
-            "$EXEC_MAIN" "$DATAFILE" "all" > "$LEAK_FILE.new" 2> "$PROGRESS_FILE" &
+            # Exécuter le programme et capturer la sortie directement dans un fichier temporaire
+            "$EXEC_MAIN" "$DATAFILE" "all" > "$TEMP_LEAK_FILE" 2> "$PROGRESS_FILE" &
             PID=$!
 
             # Affichage d'une barre de progression animée
@@ -417,14 +425,23 @@ EOF
             RESULT_CODE=$?
             rm -f "$PROGRESS_FILE"
 
-            if [ $RESULT_CODE -ne 0 ] || [ ! -s "$LEAK_FILE.new" ]; then
+            if [ $RESULT_CODE -ne 0 ] || [ ! -s "$TEMP_LEAK_FILE" ]; then
                 log_error "Échec du calcul des fuites."
                 exit 1
             fi
 
-            # Mise à jour des fichiers de résultats
-            mv "$LEAK_FILE.new" "$LEAK_FILE"
-            cp "$LEAK_FILE" "$CACHE_FILE"
+            # Vérifier que le fichier contient bien des données au format usine;valeur
+            # Si oui, copier directement dans leaks.dat
+            if grep -q ";" "$TEMP_LEAK_FILE"; then
+                # Mise à jour des fichiers de résultats
+                cat "$TEMP_LEAK_FILE" > "$LEAK_FILE"
+                cat "$TEMP_LEAK_FILE" > "$CACHE_FILE"
+            else
+                log_error "Format de sortie incorrect dans le fichier temporaire."
+                exit 1
+            fi
+
+            rm -f "$TEMP_LEAK_FILE"
 
             # Calcul et affichage du volume total des fuites
             TOTAL_LEAKS=$(awk -F';' '{if (NF==2) s+=$2} END {printf "%.6f", s}' "$LEAK_FILE")
@@ -452,6 +469,7 @@ EOF
                 VAL=$(grep -F "$(echo "$FAC" | sed 's/;/\\;/g')" "$LEAK_FILE" | tail -n1 | cut -d';' -f2)
                 if [ -n "$VAL" ] && [ "$VAL" != "-1" ]; then
                     echo -e "- ${BOLD}$FAC:${RESET} ${BLUE}${VAL} M.m3${RESET}"
+                    # Utiliser bc pour les calculs avec décimales
                     TOTAL_LEAKS=$(echo "$TOTAL_LEAKS + $VAL" | bc)
                 fi
             done
@@ -466,6 +484,14 @@ EOF
         if [ -f "$LEAK_FILE" ]; then
             sort -u -t';' -k1,1 "$LEAK_FILE" > "${LEAK_FILE}.tmp"
             mv "${LEAK_FILE}.tmp" "$LEAK_FILE"
+            
+            # Vérifier que le fichier ne contient que des lignes au format usine;valeur
+            if grep -v "^[^;]*;[^;]*$" "$LEAK_FILE" > /dev/null; then
+                log_error "Le fichier leaks.dat contient des lignes au format incorrect."
+                # Filtrer pour ne garder que les lignes valides
+                grep "^[^;]*;[^;]*$" "$LEAK_FILE" > "${LEAK_FILE}.clean"
+                mv "${LEAK_FILE}.clean" "$LEAK_FILE"
+            fi
         fi
         ;;
 
