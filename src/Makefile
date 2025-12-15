@@ -1,56 +1,32 @@
-# Makefile pour le projet C-WildWater
-
-# Compilateur et options
-CC = gcc
-CFLAGS = -Wall -Wextra -std=c99 -g
+CC      = gcc
+# Utiliser les optimisations du compilateur pour accélérer l'exécution.
+# L'option -O2 active des optimisations générales et -march=native permet
+# d'utiliser les instructions de l'architecture hôte.  Le drapeau -g est
+# volontairement omis pour ne pas désactiver certaines optimisations.
+CFLAGS  = -Wall -Wextra -std=c99 -O2 -march=native
 LDFLAGS = -lm
 
-# Chemins des dossiers
-PROJECT_ROOT = ..
-SRC_DIR = $(PROJECT_ROOT)/src
-DATA_DIR = $(PROJECT_ROOT)/data
+# Liste des sources du projet.  Si vous ajoutez d’autres modules, ajoutez
+# simplement les fichiers .c dans cette variable pour qu’ils soient compilés
+# automatiquement.
+SRCS    = main.c avl.c
+OBJS    = $(addprefix bin/,$(SRCS:.c=.o))
+TARGET  = bin/c-wildwater
 
-# Fichiers source et objets (temporairement utils.c uniquement)
-SRCS = $(SRC_DIR)/utils.c
-OBJS = $(SRCS:.c=.o)
+all: bin $(TARGET)
 
-# Nom de l'exécutable
-TARGET = c-wildwater
+bin:
+	mkdir -p bin
 
-# Règle par défaut
-all: $(TARGET)
-
-# Compilation de l'exécutable
 $(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) -o $@ $(OBJS) $(LDFLAGS)
-	@echo "Compilation terminée : $(TARGET)"
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-# Règle générique pour compiler les fichiers objets
-$(SRC_DIR)/%.o: $(SRC_DIR)/%.c
+# Règles de compilation des fichiers objets
+bin/%.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# Nettoyage des fichiers générés
 clean:
-	rm -f $(SRC_DIR)/*.o *~ *.bak *.tmp
-	@echo "Fichiers objets et temporaires supprimés"
+	rm -f $(OBJS) $(TARGET)
+	rmdir bin 2>/dev/null || true
 
-# Nettoyage complet
-distclean: clean
-	rm -f $(TARGET)
-	@echo "Exécutable supprimé"
-
-# Exécution avec données par défaut
-run: $(TARGET)
-	./$(TARGET) $(DATA_DIR)/c-wildwater_v0.dat $(DATA_DIR)/c-wildwater_v3.dat
-
-# Afficher l'aide
-help:
-	@echo "Makefile pour le projet C-WildWater"
-	@echo "Commandes disponibles :"
-	@echo "  make          - Compile le programme"
-	@echo "  make clean    - Supprime les fichiers objets"
-	@echo "  make distclean - Supprime les fichiers objets et l'exécutable"
-	@echo "  make run      - Exécute le programme avec les données par défaut"
-	@echo "  make help     - Affiche cette aide"
-
-.PHONY: all clean distclean run help
+.PHONY: all clean
