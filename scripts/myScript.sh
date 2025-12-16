@@ -410,7 +410,7 @@ EOF
         show_separator
         log_progress "Leaks Mode (${BOLD}$PARAM${RESET})"
         LEAK_FILE="$DATA_DIR/leaks.dat"
-        CACHE_FILE="$DATA_DIR/.leaks_cache.dat"
+        CACHE_FILE="$CACHE_DIR/.leaks_cache.dat"
         touch "$CACHE_FILE"
 
         # Internal function to process a facility - Optimized version

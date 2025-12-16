@@ -1,5 +1,5 @@
 /*
-* Data structures for the C-WildWater project
+ * Data structures for the C-WildWater project
  *
  * Defines structures to represent the hydraulic network
  * as both an AVL tree and a directed graph.
@@ -10,6 +10,7 @@
 
 /**
  * Linked list node for connections between stations
+ * Represents an edge in the hydraulic network graph
  */
 typedef struct AdjNode {
     struct Station* target;   // Destination station
@@ -42,6 +43,7 @@ typedef struct Station {
 
 /**
  * Structure for parallel leak calculation tasks
+ * Used to pass data to threads for distributed processing
  */
 typedef struct {
     Station* node;            // Station to process

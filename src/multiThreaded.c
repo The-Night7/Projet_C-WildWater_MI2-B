@@ -1,9 +1,13 @@
 #include "multiThreaded.h"
 
-// Variables globales pour le timing
+// Global timing variables
 clock_t thread_start, thread_stop;
 
-// Fonction exécutée par chaque thread pour traiter les tâches
+/**
+ * Thread function to process tasks
+ * @param arg Pointer to node group containing tasks
+ * @return NULL
+ */
 void* doallTasks(void* arg) {
     NodeGroup* schedule = (NodeGroup*)arg;
     if (!schedule->head) return NULL;
@@ -14,6 +18,7 @@ void* doallTasks(void* arg) {
     
     while (current) {
         if (current->content) {
+            // Execute the task with its data
             ((Task*)current->content)->task(((Task*)current->content)->data);
             tasks_executed++;
         }
@@ -26,21 +31,27 @@ void* doallTasks(void* arg) {
     return NULL;
 }
 
-// Initialisation d'un groupe de nœuds
+/**
+ * Initialize a node group
+ * @param ng Pointer to node group
+ */
 void initNodeGroup(NodeGroup* ng) {
     ng->head = malloc(sizeof(Node));
     ng->head->content = NULL;
     ng->head->next = NULL;
 }
 
-// Configuration du système de threads
+/**
+ * Create and initialize a thread system
+ * @return Pointer to initialized thread system
+ */
 Threads* setupThreads() {
     Threads* newThreads = malloc(sizeof(Threads));
     newThreads->doall = doallTasks;
     
     for (int i = 0; i < maxthreads; i++) {
         newThreads->occupency[i] = 0;
-        // Initialisation du premier nœud
+        // Initialize the first node in each task list
         newThreads->scheduledTasks[i].head = malloc(sizeof(Node));
         newThreads->scheduledTasks[i].head->content = NULL;
         newThreads->scheduledTasks[i].head->next = NULL;
@@ -49,7 +60,11 @@ Threads* setupThreads() {
     return newThreads;
 }
 
-// Ajoute une tâche à un groupe
+/**
+ * Add a task to a node group
+ * @param g Node group
+ * @param task Task to add
+ */
 void addTaskToGroup(NodeGroup g, Task* task) {
     Node* current = g.head;
     while (current->next) {
@@ -59,12 +74,18 @@ void addTaskToGroup(NodeGroup g, Task* task) {
     new->next = NULL;
     new->content = (void*)task;
     current->next = new;
-    return;
 }
 
-// Ajoute une tâche au thread le moins chargé
+/**
+ * Add a task to the least loaded thread
+ * @param t Thread system
+ * @param task Function to execute
+ * @param data Data to pass to function
+ */
 void addTaskInThreads(Threads* t, void (*task)(void* param), void* data) {
     if (!t) return;
+    
+    // Find the least loaded thread
     int min = t->occupency[0];
     int slot = 0;
     for (int i = 0; i < maxthreads; i++) {
@@ -73,6 +94,8 @@ void addTaskInThreads(Threads* t, void (*task)(void* param), void* data) {
             slot = i;
         }
     }
+    
+    // Create and add the task
     Task* ntsk = malloc(sizeof(Task));
     ntsk->task = task;
     ntsk->data = data;
@@ -80,22 +103,29 @@ void addTaskInThreads(Threads* t, void (*task)(void* param), void* data) {
     t->occupency[slot]++;
 }
 
-// Exécute toutes les tâches planifiées sur les threads
+/**
+ * Execute all tasks in the thread system
+ * @param t Thread system
+ */
 void handleThreads(Threads* t) {
     if (!t) return;
     
-    // Création des threads
+    // Create threads
     for (int i = 0; i < maxthreads; i++) {
         pthread_create(&t->threads[i], NULL, t->doall, (void*)&t->scheduledTasks[i]);
     }
     
-    // Attente de la fin des threads
+    // Wait for all threads to complete
     for (int i = 0; i < maxthreads; i++) {
         pthread_join(t->threads[i], NULL);
     }
 }
 
-// Fonction utilitaire pour ajouter du contenu à un NodeGroup
+/**
+ * Add content to a node group
+ * @param ng Pointer to node group
+ * @param content Content to add
+ */
 void addContent(NodeGroup* ng, void* content) {
     Node* current = ng->head;
     while (current->next) {
