@@ -197,19 +197,32 @@ void write_csv(Station* node, FILE* output, char* mode) {
     // Inorder traversal (left-root-right)
     write_csv(node->left, output, mode);
 
-    // Select value based on mode
-    double val = 0;
-    if (strcmp(mode, "max") == 0) {
-        val = node->capacity/1000.0;        // Maximum capacity
-    } else if (strcmp(mode, "src") == 0) {
-        val = node->consumption/1000.0;     // Captured volume
-    } else if (strcmp(mode, "real") == 0) {
-        val = node->real_qty/1000.0;        // Actual volume
-    }
+    if (strcmp(mode, "all") == 0) {
+        // Mode "all": display all three values on the same line
+        double max_val = node->capacity/1000.0;
+        double src_val = node->consumption/1000.0;
+        double real_val = node->real_qty/1000.0;
 
-    // Write only positive values
-    if (val > 0) {
-        fprintf(output, "%s;%.6f\n", node->name, val);
+        // Write only if at least one value is positive
+        if (max_val > 0 || src_val > 0 || real_val > 0) {
+            fprintf(output, "%s;%.6f;%.6f;%.6f\n",
+                   node->name, max_val, src_val, real_val);
+        }
+    } else {
+        // Standard modes (max, src, real)
+        double val = 0;
+        if (strcmp(mode, "max") == 0) {
+            val = node->capacity/1000.0;        // Maximum capacity
+        } else if (strcmp(mode, "src") == 0) {
+            val = node->consumption/1000.0;     // Captured volume
+        } else if (strcmp(mode, "real") == 0) {
+            val = node->real_qty/1000.0;        // Actual volume
+        }
+
+        // Write only positive values
+        if (val > 0) {
+            fprintf(output, "%s;%.6f\n", node->name, val);
+        }
     }
 
     write_csv(node->right, output, mode);
