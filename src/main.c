@@ -55,36 +55,31 @@ static double solve_leaks(Station* node, double input_vol, Station* u,
     // Early termination for zero volume or null node
     if (!node || input_vol <= 0.001) return 0.0;
 
-    // Use total number of children for physical distribution
+    // Early termination if no outgoing connections
     if (node->nb_children == 0) return 0.0;
 
-    double total_loss = 0.0;
-
-    // Distribute volume across ALL outgoing connections (physical constraint)
-    // We divide by the total number of children, regardless of the factory - optimized loop
-    double vol_per_pipe = input_vol / node->nb_children;
-
+    // Count valid outgoing connections for this facility
+    int valid_count = 0;
     AdjNode* curr = node->children;
     
-    // Pre-count valid connections to avoid multiple traversals
     while (curr) {
         if (curr->factory == NULL || curr->factory == u) {
-            count++;
+            valid_count++;
         }
         curr = curr->next;
     }
     
     // Early termination if no valid connections
-    if (count == 0) return 0.0;
+    if (valid_count == 0) return 0.0;
 
     // Distribute volume and calculate losses
     double total_loss = 0.0;
-    double vol_per_pipe = input_vol / count;
+    double vol_per_pipe = input_vol / valid_count;
     curr = node->children;
 
     // Process each connection - optimized to minimize calculations
     while (curr) {
-        // Only process/recurse if the pipe belongs to the requested factory (or is shared)
+        // Only process/recurse if the pipe belongs to the requested facility (or is shared)
         if (curr->factory == NULL || curr->factory == u) {
             // Calculate losses on this section - only if leak percentage is significant
             double pipe_loss = 0.0;
@@ -115,6 +110,7 @@ static double solve_leaks(Station* node, double input_vol, Station* u,
     }
     return total_loss;
 }
+
 /**
  * Thread task wrapper for leak calculation of a specific branch
  * @param arg Pointer to LeakTaskData structure
