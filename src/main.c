@@ -275,7 +275,8 @@ int main(int argc, char** argv) {
     if (strcmp(arg_mode, "max") == 0) mode_histo = 1;
     else if (strcmp(arg_mode, "src") == 0) mode_histo = 2;
     else if (strcmp(arg_mode, "real") == 0) mode_histo = 3;
-    else if (strcmp(arg_mode, "all") == 0) mode_all_leaks = 1;
+    else if (strcmp(arg_mode, "all") == 0) mode_histo = 4; // MODIFIÉ: "all" est maintenant un mode histogramme (4)
+    else if (strcmp(arg_mode, "bonus") == 0) mode_leaks = 1;
     else mode_leaks = 1; // Facility ID
 
     // Initialization
@@ -404,22 +405,35 @@ int main(int argc, char** argv) {
         } else {
             // Histogram mode: aggregate according to mode
 
-            if (mode_histo == 1 && cols[1] && !cols[2] && cols[3]) {
-                // "max" mode: maximum facility capacities
+            if ((mode_histo == 1 || mode_histo == 4) && cols[1] && !cols[2] && cols[3]) {
+                // "max" mode or "all" mode: maximum facility capacities
                 root = insert_station(root, cols[1], atol(cols[3]), 0, 0);
             }
-            else if ((mode_histo == 2 || mode_histo == 3) && cols[2] && cols[3]) {
-                // "src" or "real" modes: captured or actual volumes
+
+            if ((mode_histo == 2 || mode_histo == 4) && cols[2] && cols[3]) {
+                // "src" mode or "all" mode: captured volumes
+                long vol = atol(cols[3]);
+                root = insert_station(root, cols[2], 0, vol, 0);
+            }
+
+            if ((mode_histo == 3 || mode_histo == 4) && cols[2] && cols[3]) {
+                // "real" mode or "all" mode: actual volumes
                 long vol = atol(cols[3]);
                 long real = vol;
 
-                if (mode_histo == 3 && cols[4]) {
-                    // For "real", apply leak %
+                if (cols[4]) {
+                    // Apply leak %
                     double p_leak = atof(cols[4]);
                     real = (long)(vol * (1.0 - (p_leak / 100.0)));
                 }
 
-                root = insert_station(root, cols[2], 0, vol, real);
+                // Pour le mode "all", on ajoute seulement real_qty
+                // Pour le mode "real", on ajoute à la fois consumption et real_qty
+                if (mode_histo == 4) {
+                    root = insert_station(root, cols[2], 0, 0, real);
+                } else {
+                    root = insert_station(root, cols[2], 0, 0, real);
+                }
             }
         }
     }
@@ -483,8 +497,9 @@ int main(int argc, char** argv) {
         // Generate histogram
         char mode_str[10];
         if (mode_histo == 1) strcpy(mode_str, "max");
-        if (mode_histo == 2) strcpy(mode_str, "src");
-        if (mode_histo == 3) strcpy(mode_str, "real");
+        else if (mode_histo == 2) strcpy(mode_str, "src");
+        else if (mode_histo == 3) strcpy(mode_str, "real");
+        else if (mode_histo == 4) strcpy(mode_str, "all");
 
         write_csv(root, stdout, mode_str);
     }
