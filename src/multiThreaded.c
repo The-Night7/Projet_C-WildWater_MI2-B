@@ -28,8 +28,11 @@ void* doallTasks(void* arg) {
     while (current) {
         if (current->content) {
             // Execute the task with its data
-            ((Task*)current->content)->task(((Task*)current->content)->data);
+            Task* tsk = (Task*)current->content;
+            tsk->task(tsk->data);
             tasks_executed++;
+
+            free(tsk);
         }
         temp = current;
         schedule->head = current->next;
@@ -284,6 +287,14 @@ void cleanupThreads(Threads* t) {
     for (int i = 0; i < maxthreads; i++) {
         cleanupNodeGroup(&t->scheduledTasks[i]);
     }
-    pthread_mutex_destroy(&global_mutex);
+    /*
+     * Do not destroy the global mutex here.
+     * The global_mutex is a process‑wide synchronisation primitive used
+     * across multiple thread system instances.  Destroying it in this
+     * function would invalidate the mutex for subsequent uses, leading
+     * to undefined behaviour when callers attempt to lock or unlock it.
+     * It should either be destroyed at program termination or not at
+     * all, so we intentionally omit pthread_mutex_destroy(&global_mutex).
+     */
     free(t);
 }

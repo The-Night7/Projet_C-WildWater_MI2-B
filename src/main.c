@@ -306,6 +306,10 @@ static double calculate_leaks_mt(Station* node, double volume, Station* facility
         current = current->next;
         free(tmp);
     }
+
+    if (results.head) {
+        results.head->next = NULL;
+    }
     
     // Display critical section info
     if (global_max_leak > 0.0) {

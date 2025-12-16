@@ -220,11 +220,11 @@ case "$COMMAND" in
             # ---------------------------------------------------------
             
             # Temporary files
-            TMP_MAX="$DATA_DIR/.tmp_max"
-            TMP_SRC="$DATA_DIR/.tmp_src"
-            TMP_REAL="$DATA_DIR/.tmp_real"
-            TMP_MERGED="$DATA_DIR/.tmp_merged"
-            TMP_SORTED="$DATA_DIR/.tmp_sorted"
+            TMP_MAX="$CACHE_DIR/.tmp_max"
+            TMP_SRC="$CACHE_DIR/.tmp_src"
+            TMP_REAL="$CACHE_DIR/.tmp_real"
+            TMP_MERGED="$CACHE_DIR/.tmp_merged"
+            TMP_SORTED="$CACHE_DIR/.tmp_sorted"
 
             echo -e "${YELLOW}Generating combined data...${RESET}"
 
@@ -439,20 +439,15 @@ EOF
             nice -n 10 stdbuf -oL -eL "$EXEC_MAIN" "$DATAFILE" "$FACTORY" > "$TEMP_OUT_FILE" 2> "$TEMP_ERR_FILE" &
             PID=$!
 
-            # Display animated progress bar with timeout
+            # Display animated progress bar
+            # Initialize a spinner to show progress and track elapsed time
             i=0
             spin='-\|/'
-            TIMEOUT=180  # 3 minutes max
             START_TIME=$SECONDS
 
             while kill -0 $PID 2>/dev/null; do
-                # Check if timeout is reached
+                # Compute elapsed time since the start of the process
                 ELAPSED=$((SECONDS - START_TIME))
-                if [ $ELAPSED -gt $TIMEOUT ]; then
-                    echo -e "\n${RED}Timeout reached (${TIMEOUT}s). Forcing calculation to stop.${RESET}"
-                    kill -9 $PID 2>/dev/null
-                    break
-                fi
 
                 i=$(( (i+1) % 4 ))
 
