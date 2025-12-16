@@ -3,13 +3,7 @@
 // Global timing variables
 clock_t thread_start, thread_stop;
 
-/*
- * Global mutex for protecting shared data.  It is declared in the
- * header but was never defined, causing unresolved symbol errors if
- * referenced.  We define it here and initialise it with the default
- * attributes.  This mutex can be used to serialise access to shared
- * structures such as the occupancy counters when needed.
- */
+// Global mutex for protecting shared data
 pthread_mutex_t global_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /**
@@ -44,9 +38,9 @@ void* doallTasks(void* arg) {
 }
 
 /**
- * Initialise a node group and its mutex.
+ * Initialize a node group and its mutex
  *
- * @param ng Pointer to a NodeGroup to initialise
+ * @param ng Pointer to a NodeGroup to initialize
  * @return 0 on success, -1 on failure
  */
 int initNodeGroup(NodeGroup* ng) {
@@ -66,13 +60,7 @@ int initNodeGroup(NodeGroup* ng) {
 }
 
 /**
- * Create and initialise a thread system.
- *
- * This function allocates a Threads structure, initialises each
- * queue and its mutex and sets the worker function.  The number of
- * queued tasks is set to zero.  If any allocation or
- * initialisation fails, the partially constructed structure is
- * cleaned up and NULL is returned.
+ * Create and initialize a thread system
  *
  * @return Pointer to the new Threads system, or NULL on failure
  */
@@ -84,7 +72,7 @@ Threads* setupThreads() {
     for (int i = 0; i < maxthreads; i++) {
         newThreads->occupency[i] = 0;
         if (initNodeGroup(&newThreads->scheduledTasks[i]) != 0) {
-            // Free previously initialised groups
+            // Free previously initialized groups
             for (int j = 0; j < i; j++) {
                 cleanupNodeGroup(&newThreads->scheduledTasks[j]);
             }
@@ -96,11 +84,7 @@ Threads* setupThreads() {
 }
 
 /**
- * Append a task to a node group.
- *
- * The caller must supply a pointer to the NodeGroup so that
- * modifications affect the original list.  A mutex protects
- * concurrent inserts.
+ * Append a task to a node group
  *
  * @param g Pointer to the NodeGroup
  * @param task Task to add
@@ -137,13 +121,7 @@ int addTaskToGroup(NodeGroup* g, Task* task) {
 }
 
 /**
- * Add a task to the least loaded thread.
- *
- * The function searches for the queue with the smallest occupancy,
- * allocates a new Task structure and appends it to that queue.
- * A global mutex is used to protect the occupancy array during the
- * search and update.  The caller is responsible for freeing the
- * Task structure when it is no longer needed.
+ * Add a task to the least loaded thread
  *
  * @param t Pointer to the Threads system
  * @param task Function to execute in the worker
@@ -180,12 +158,7 @@ int addTaskInThreads(Threads* t, void (*task)(void* param), void* data) {
 }
 
 /**
- * Execute all queued tasks in the thread system.
- *
- * This function spawns one worker thread per queue, waits for each
- * thread to finish and returns the number of errors encountered.  A
- * thread error is recorded when the call to pthread_create or
- * pthread_join returns a non‑zero value.
+ * Execute all queued tasks in the thread system
  *
  * @param t Thread system
  * @return 0 on success, >0 if one or more thread operations failed
@@ -210,11 +183,7 @@ int handleThreads(Threads* t) {
 }
 
 /**
- * Append arbitrary content to a NodeGroup.
- *
- * The function locks the NodeGroup's mutex before appending the
- * content and unlocks it after the insertion.  A new node is
- * allocated to hold the content pointer.
+ * Append arbitrary content to a NodeGroup
  *
  * @param ng Pointer to NodeGroup
  * @param content Content to add
@@ -251,11 +220,7 @@ int addContent(NodeGroup* ng, void* content) {
 }
 
 /**
- * Clean up a node group.
- *
- * Frees all nodes in the group (including the sentinel) and
- * destroys the associated mutex.  The list head pointer is set to
- * NULL.
+ * Clean up a node group
  *
  * @param ng Pointer to the NodeGroup to clean up
  */
@@ -274,11 +239,7 @@ void cleanupNodeGroup(NodeGroup* ng) {
 }
 
 /**
- * Clean up a thread system and free its resources.
- *
- * This function calls cleanupNodeGroup on each scheduled task queue
- * and then frees the Threads structure itself.  It also destroys
- * the global mutex used to protect the occupancy counters.
+ * Clean up a thread system and free its resources
  *
  * @param t Pointer to the thread system to clean up
  */
@@ -287,14 +248,6 @@ void cleanupThreads(Threads* t) {
     for (int i = 0; i < maxthreads; i++) {
         cleanupNodeGroup(&t->scheduledTasks[i]);
     }
-    /*
-     * Do not destroy the global mutex here.
-     * The global_mutex is a process‑wide synchronisation primitive used
-     * across multiple thread system instances.  Destroying it in this
-     * function would invalidate the mutex for subsequent uses, leading
-     * to undefined behaviour when callers attempt to lock or unlock it.
-     * It should either be destroyed at program termination or not at
-     * all, so we intentionally omit pthread_mutex_destroy(&global_mutex).
-     */
+    // Note: global_mutex is not destroyed as it may be used by other thread systems
     free(t);
 }

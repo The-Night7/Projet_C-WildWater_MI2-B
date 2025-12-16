@@ -1,9 +1,8 @@
 # Makefile for C-WildWater project
+
 # Compiler configuration
 CC      = gcc
-# Optimization flags for better performance
 CFLAGS  = -Wall -Wextra -std=c99 -O2 -march=native
-# Libraries needed for threading
 LDFLAGS = -lm -pthread
 
 # Source files

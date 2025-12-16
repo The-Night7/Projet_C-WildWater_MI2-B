@@ -1,64 +1,62 @@
-# 🌊 C-WildWater : Analyse de Réseau Hydraulique
+# 🌊 C-WildWater: Hydraulic Network Analysis
 
-> **Traitement massif de données & Algorithmique en C**
+> **Massive Data Processing & C Algorithms**
 
 ![Language](https://img.shields.io/badge/Language-C-blue) ![Script](https://img.shields.io/badge/Script-Bash-green) ![Build](https://img.shields.io/badge/Build-Make-orange)
 
-## 📖 À propos du projet
+## 📖 Project Overview
 
-**C-WildWater** est une application haute performance conçue pour analyser un réseau de distribution d'eau potable simulant **1/3 du réseau français**.
+**C-WildWater** is a high-performance application designed to analyze a drinking water distribution network that simulates **1/3 of the French network**.
 
-Face à un fichier de données massif (plusieurs millions de lignes, >500Mo), ce projet combine la flexibilité du **Shell** et la puissance du **C** pour :
-1.  Ingérer et structurer les données (Graphes & Arbres AVL).
-2.  Générer des statistiques précises sur les usines de traitement.
-3.  Détecter les fuites et calculer les pertes sur l'ensemble du réseau.
-4.  Visualiser les résultats via des graphiques dynamiques.
+The project processes a massive data file (several million lines, >500MB), combining **Shell** flexibility and **C** performance to:
+1. Ingest and structure data (Graphs & AVL Trees)
+2. Generate statistics on treatment plants
+3. Detect leaks and calculate network losses
+4. Visualize results through dynamic graphs
 
----
+## 🚀 Key Features
 
-## 🚀 Fonctionnalités Clés
+### 📊 1. Volume Analysis (Histo Mode)
+Generates CSV files and graphs via **Gnuplot** to visualize:
+* **Capacity:** Maximum volume plants can process
+* **Source:** Water volume drawn from sources
+* **Actual:** Final distributed volume (after leaks)
+* **All:** Combined histogram showing all three states simultaneously
 
-### 📊 1. Analyse des Volumes (Mode Histo)
-Génération de fichiers CSV et de graphiques via **Gnuplot** pour visualiser :
-* **Capacité :** Le volume maximal que les usines peuvent traiter.
-* **Captage :** Le volume d'eau réellement puisé aux sources.
-* **Réel :** Le volume final distribué (après fuites).
-* ✨ **BONUS :** Un histogramme cumulé ("All") visualisant les 3 états simultanément (Capacité / Pertes / Sortie).
+### 💧 2. Leak Calculation (Leaks Mode)
+Optimized graph traversal algorithm (DFS) to calculate total water volume lost downstream from a specific plant:
+* Optimized processing time (milliseconds)
+* Accounts for leak percentages at each section
+* Automatically identifies critical section (worst leak in absolute value)
 
-### 💧 2. Calcul de Fuites (Mode Leaks)
-Un algorithme de parcours de graphe (DFS) optimisé pour calculer le volume total d'eau perdu en aval d'une usine spécifique.
-* **Performance :** Temps de traitement optimisé (millisecondes).
-* **Précision :** Prise en compte des pourcentages de fuite à chaque tronçon.
-* ✨ **BONUS :** Identification automatique du tronçon critique (pire fuite en valeur absolue).
+## 🛠️ Setup & Requirements
 
----
+This project is designed for **Linux** environments (or WSL).
 
-## 🛠️ Installation & Prérequis
-
-Ce projet est conçu pour fonctionner sous un environnement **Linux** (ou WSL).
-
-### Cloner le projet
+### Clone the project
 ```bash
-git clone [https://github.com/The-Night7/Projet_C-WildWater_MI2-B.git](https://github.com/The-Night7/Projet_C-WildWater_MI2-B.git)
+git clone https://github.com/The-Night7/Projet_C-WildWater_MI2-B.git
 cd Projet_C-WildWater_MI2-B
 ```
 
-**Dépendances nécessaires :**
+**Dependencies:**
 ```bash
 sudo apt update
 sudo apt install build-essential gnuplot make
 sudo apt install dos2unix
 ```
-## Utilisation :
+
+## Usage:
 ```bash
 dos2unix scripts/myScript.sh
 chmod +x scripts/myScript.sh
-./scripts/myScript.sh histo max    # Capacité maximale
-./scripts/myScript.sh histo src    # Volume sources
-./scripts/myScript.sh histo real   # Volume réel traité
-./scripts/myScript.sh histo all    # Bonus : Graphique unifiant les trois modes
+./scripts/myScript.sh histo max    # Maximum capacity
+./scripts/myScript.sh histo src    # Source volume
+./scripts/myScript.sh histo real   # Actual processed volume
+./scripts/myScript.sh histo all    # Combined graph of all three modes
 ```
-**Exemple leaks**
+
+**Leaks example:**
 ```bash
 ./scripts/myScript.sh leaks "Facility complex #RH400057F"
 ```

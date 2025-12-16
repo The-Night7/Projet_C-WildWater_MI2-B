@@ -10,7 +10,6 @@
 
 /**
  * Number of threads to use for parallel processing
- * Can be adjusted based on the number of CPU cores
  */
 #define maxthreads 4
 
@@ -37,7 +36,7 @@ typedef struct node {
  */
 typedef struct {
     Node* head;
-    pthread_mutex_t mutex; // Mutex to protect node group operations
+    pthread_mutex_t mutex;
 } NodeGroup;
 
 /**
@@ -56,7 +55,7 @@ typedef struct {
     NodeGroup scheduledTasks[maxthreads];
     pthread_t threads[maxthreads];
     void* (*doall)(void* self);
-    int error_count;      // Count of thread errors
+    int error_count;
 } Threads;
 
 /**
@@ -80,7 +79,7 @@ void cleanupNodeGroup(NodeGroup* ng);
 void* doallTasks(void* arg);
 
 /**
- * Add a task to a node group with mutex protection
+ * Add a task to a node group
  * @param g Node group
  * @param task Task to add
  * @return 0 on success, -1 on failure
@@ -116,7 +115,7 @@ Threads* setupThreads();
 void cleanupThreads(Threads* t);
 
 /**
- * Add content to a node group with mutex protection
+ * Add content to a node group
  * @param ng Pointer to node group
  * @param content Content to add
  * @return 0 on success, -1 on failure

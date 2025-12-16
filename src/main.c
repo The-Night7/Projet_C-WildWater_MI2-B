@@ -40,8 +40,7 @@ static char* trim_whitespace(char* str) {
 
 /**
  * Recursively calculates water losses in the network
- * Optimized version with early termination for zero volume
- *
+ * 
  * @param node         Current station
  * @param input_vol    Incoming water volume
  * @param u            Facility for which leaks are calculated
@@ -52,10 +51,8 @@ static char* trim_whitespace(char* str) {
  */
 static double solve_leaks(Station* node, double input_vol, Station* u,
                          double* max_leak_val, char** max_from, char** max_to) {
-    // Early termination for zero volume or null node
+    // Early termination conditions
     if (!node || input_vol <= 0.001) return 0.0;
-
-    // Early termination if no outgoing connections
     if (node->nb_children == 0) return 0.0;
 
     // Count valid outgoing connections for this facility
@@ -69,7 +66,6 @@ static double solve_leaks(Station* node, double input_vol, Station* u,
         curr = curr->next;
     }
     
-    // Early termination if no valid connections
     if (valid_count == 0) return 0.0;
 
     // Distribute volume and calculate losses
@@ -77,17 +73,17 @@ static double solve_leaks(Station* node, double input_vol, Station* u,
     double vol_per_pipe = input_vol / valid_count;
     curr = node->children;
 
-    // Process each connection - optimized to minimize calculations
+    // Process each connection
     while (curr) {
         // Only process/recurse if the pipe belongs to the requested facility (or is shared)
         if (curr->factory == NULL || curr->factory == u) {
-            // Calculate losses on this section - only if leak percentage is significant
+            // Calculate losses on this section
             double pipe_loss = 0.0;
             if (curr->leak_perc > 0.001) {
                 pipe_loss = vol_per_pipe * (curr->leak_perc / 100.0);
             }
 
-            // Track section with maximum leak - only update if significant
+            // Track section with maximum leak
             if (pipe_loss > *max_leak_val) {
                 *max_leak_val = pipe_loss;
                 *max_from = node->name;       // Upstream ID
@@ -96,7 +92,6 @@ static double solve_leaks(Station* node, double input_vol, Station* u,
 
             double vol_arrived = vol_per_pipe - pipe_loss;
             
-            // Early termination for negligible volume
             if (vol_arrived > 0.001) {
                 // Add local and recursive losses
                 total_loss += pipe_loss + solve_leaks(curr->target, vol_arrived, u,
@@ -131,9 +126,7 @@ static void leak_branch_task_wrapper(void* arg) {
 
 /**
  * Calculates leaks for a facility using multithreading for branches
- * This improves performance by processing each outgoing branch in parallel
- * Optimized version with better memory management and early termination
- *
+ * 
  * @param node     Starting station
  * @param volume   Input volume
  * @param facility Target facility
@@ -146,7 +139,7 @@ static double calculate_leaks_mt(Station* node, double volume, Station* facility
     int count = 0;
     AdjNode* curr = node->children;
     
-    // Pre-allocate arrays for better performance
+    // Pre-allocate arrays
     AdjNode** valid_connections = NULL;
     double* pipe_losses = NULL;
     double* volumes_arrived = NULL;
@@ -161,7 +154,7 @@ static double calculate_leaks_mt(Station* node, double volume, Station* facility
     
     if (count == 0) return 0.0;
     
-    // If only one branch or few branches, use direct calculation for better performance
+    // Use direct calculation for small number of branches
     if (count <= 2) {
         double max_leak_val = 0.0;
         char* max_from = NULL;
@@ -217,7 +210,7 @@ static double calculate_leaks_mt(Station* node, double volume, Station* facility
     NodeGroup results;
     initNodeGroup(&results);
     
-    // Prepare tasks for each branch - optimized to reduce memory allocations
+    // Prepare tasks for each branch
     double total_pipe_loss = 0.0;
     double global_max_leak = 0.0;
     char* global_max_from = NULL;
@@ -245,8 +238,8 @@ static double calculate_leaks_mt(Station* node, double volume, Station* facility
         char** max_from = malloc(sizeof(char*));
         char** max_to = malloc(sizeof(char*));
         
-        *branch_result = 0.0;  // Will be updated by the task
-        *max_leak_val = 0.0;   // Initialize max leak
+        *branch_result = 0.0;
+        *max_leak_val = 0.0;
         *max_from = NULL;
         *max_to = NULL;
         
@@ -321,25 +314,12 @@ static double calculate_leaks_mt(Station* node, double volume, Station* facility
         fprintf(stderr, "=================\n");
     }
     
-    // Clean up the results list's sentinel and its mutex
+    // Clean up resources
     cleanupNodeGroup(&results);
-
-    // Free thread system (queues, mutexes, and structure)
     cleanupThreads(thread_system);
     
-    // Return total leaks (pipe losses + downstream leaks)
     return total_pipe_loss + downstream_leaks;
 }
-
-// /**
-//  * Counts total number of stations in the tree
-//  * @param node Root node
-//  * @return Number of stations
-//  */
-// static int count_stations(Station* node) {
-//     if (!node) return 0;
-//     return 1 + count_stations(node->left) + count_stations(node->right);
-// }
 
 /**
  * Program entry point
@@ -359,7 +339,7 @@ int main(int argc, char** argv) {
     if (!file) return 2;
 
     // Reading optimization
-    const size_t BUF_SIZE = 32 * 1024 * 1024; // 32 MB buffer for better performance
+    const size_t BUF_SIZE = 32 * 1024 * 1024; // 32 MB buffer
     char* big_buffer = malloc(BUF_SIZE);
     if (big_buffer) setvbuf(file, big_buffer, _IOFBF, BUF_SIZE);
 
@@ -379,7 +359,7 @@ int main(int argc, char** argv) {
     char line[1024];
     long line_count = 0;
 
-    // Progress display interval - reduced for more frequent updates
+    // Progress display interval
 #ifndef PROGRESS_INTERVAL
 #define PROGRESS_INTERVAL 100000L
 #endif
@@ -391,7 +371,7 @@ int main(int argc, char** argv) {
     while (fgets(line, sizeof(line), file)) {
         line_count++;
 
-        // Periodic progress display - time-based to avoid excessive output
+        // Periodic progress display
         time_t current_time = time(NULL);
         if (line_count % PROGRESS_INTERVAL == 0 || current_time > last_report_time) {
             fprintf(stderr, "Lines processed: %ld...\r", line_count);
@@ -403,7 +383,7 @@ int main(int argc, char** argv) {
         line[strcspn(line, "\r\n")] = '\0';
         if (strlen(line) < 2) continue;
 
-        // Split by semicolons (up to 5 columns) - optimized parsing
+        // Split by semicolons (up to 5 columns)
         char* cols[5] = {NULL};
         char* p = line;
         int c = 0;
@@ -417,7 +397,7 @@ int main(int argc, char** argv) {
             p++;
         }
 
-        // Clean fields - only when needed
+        // Clean fields
         for (int i = 0; i < c; i++) {
             if (cols[i]) {
                 cols[i] = trim_whitespace(cols[i]);

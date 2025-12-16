@@ -44,7 +44,6 @@ static int get_height(Station* n) {
 
 /**
  * Calculates the balance factor of a node
- * Positive value means left-heavy, negative means right-heavy
  */
 static int get_balance(Station* n) {
     return n ? get_height(n->left) - get_height(n->right) : 0;
