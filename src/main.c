@@ -50,24 +50,21 @@ static double solve_leaks(Station* node, double input_vol, Station* u,
                          double* max_leak_val, char** max_from, char** max_to) {
     if (!node) return 0.0;
 
-    // Count outgoing connections for this facility
-    int count = 0;
-    AdjNode* curr = node->children;
-    while (curr) {
-        if (curr->factory == NULL || curr->factory == u) {
-            count++;
-        }
-        curr = curr->next;
-    }
-    if (count == 0) return 0.0;
+    // Use total number of children for physical distribution
+    if (node->nb_children == 0) return 0.0;
 
-    // Distribute volume and calculate losses
     double total_loss = 0.0;
-    double vol_per_pipe = input_vol / count;
-    curr = node->children;
+
+    // Distribute volume across ALL outgoing connections (physical constraint)
+    // We divide by the total number of children, regardless of the factory
+    double vol_per_pipe = input_vol / node->nb_children;
+
+    AdjNode* curr = node->children;
 
     while (curr) {
+        // Only process/recurse if the pipe belongs to the requested factory (or is shared)
         if (curr->factory == NULL || curr->factory == u) {
+
             // Calculate losses on this section
             double pipe_loss = 0.0;
             if (curr->leak_perc > 0) {
@@ -91,7 +88,6 @@ static double solve_leaks(Station* node, double input_vol, Station* u,
     }
     return total_loss;
 }
-
 /**
  * Calculates leaks for all facilities in the tree
  *
