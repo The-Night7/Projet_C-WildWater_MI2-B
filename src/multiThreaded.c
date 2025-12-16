@@ -1,11 +1,15 @@
 #include "multiThreaded.h"
-#include <string.h>
-#include <errno.h>
 
 // Global timing variables
 clock_t thread_start, thread_stop;
 
-// Global mutex for protecting shared data
+/*
+ * Global mutex for protecting shared data.  It is declared in the
+ * header but was never defined, causing unresolved symbol errors if
+ * referenced.  We define it here and initialise it with the default
+ * attributes.  This mutex can be used to serialise access to shared
+ * structures such as the occupancy counters when needed.
+ */
 pthread_mutex_t global_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /**
@@ -15,304 +19,271 @@ pthread_mutex_t global_mutex = PTHREAD_MUTEX_INITIALIZER;
  */
 void* doallTasks(void* arg) {
     NodeGroup* schedule = (NodeGroup*)arg;
-    if (!schedule || !schedule->head) return NULL;
-
-    Node* current = NULL;
+    if (!schedule->head) return NULL;
+    
+    Node* current = schedule->head;
     Node* temp = NULL;
     int tasks_executed = 0;
-
-    // Lock the node group to safely access its content
-    pthread_mutex_lock(&schedule->mutex);
-
-    current = schedule->head;
-
+    
     while (current) {
         if (current->content) {
-            Task* task = (Task*)current->content;
-
-            // Unlock during task execution to allow other threads to work
-            pthread_mutex_unlock(&schedule->mutex);
-
-            // Execute the task
-            task->task(task->data);
+            // Execute the task with its data
+            ((Task*)current->content)->task(((Task*)current->content)->data);
             tasks_executed++;
-
-            // Free task memory
-            free(task);
-
-            // Lock again to continue list traversal
-            pthread_mutex_lock(&schedule->mutex);
         }
-
         temp = current;
+        schedule->head = current->next;
         current = current->next;
         free(temp);
     }
-
-    // Reset the list head
-    schedule->head = NULL;
-
-    pthread_mutex_unlock(&schedule->mutex);
+    
     return NULL;
 }
 
 /**
- * Initialize a node group with mutex
- * @param ng Pointer to node group
+ * Initialise a node group and its mutex.
+ *
+ * @param ng Pointer to a NodeGroup to initialise
  * @return 0 on success, -1 on failure
  */
 int initNodeGroup(NodeGroup* ng) {
     if (!ng) return -1;
-
-    // Initialize mutex
-    if (pthread_mutex_init(&ng->mutex, NULL) != 0) {
-        fprintf(stderr, "Error initializing mutex: %s\n", strerror(errno));
-        return -1;
-    }
-
-    // Create head node
     ng->head = malloc(sizeof(Node));
     if (!ng->head) {
-        pthread_mutex_destroy(&ng->mutex);
         return -1;
     }
-
     ng->head->content = NULL;
     ng->head->next = NULL;
+    if (pthread_mutex_init(&ng->mutex, NULL) != 0) {
+        free(ng->head);
+        ng->head = NULL;
+        return -1;
+    }
     return 0;
 }
 
 /**
- * Clean up a node group and free resources
- * @param ng Pointer to node group
- */
-void cleanupNodeGroup(NodeGroup* ng) {
-    if (!ng) return;
-
-    pthread_mutex_lock(&ng->mutex);
-
-    // Free all nodes
-    Node* current = ng->head;
-    while (current) {
-        Node* temp = current;
-        current = current->next;
-
-        // Free task if present
-        if (temp->content) {
-            Task* task = (Task*)temp->content;
-            free(task);
-        }
-
-        free(temp);
-    }
-
-    ng->head = NULL;
-
-    pthread_mutex_unlock(&ng->mutex);
-    pthread_mutex_destroy(&ng->mutex);
-}
-
-/**
- * Create and initialize a thread system
- * @return Pointer to initialized thread system, NULL on failure
+ * Create and initialise a thread system.
+ *
+ * This function allocates a Threads structure, initialises each
+ * queue and its mutex and sets the worker function.  The number of
+ * queued tasks is set to zero.  If any allocation or
+ * initialisation fails, the partially constructed structure is
+ * cleaned up and NULL is returned.
+ *
+ * @return Pointer to the new Threads system, or NULL on failure
  */
 Threads* setupThreads() {
     Threads* newThreads = malloc(sizeof(Threads));
-    if (!newThreads) {
-        fprintf(stderr, "Failed to allocate memory for thread system\n");
-        return NULL;
-    }
-
-    // Initialize thread system mutex
-    if (pthread_mutex_init(&newThreads->mutex, NULL) != 0) {
-        fprintf(stderr, "Error initializing thread system mutex: %s\n", strerror(errno));
-        free(newThreads);
-        return NULL;
-    }
-
+    if (!newThreads) return NULL;
     newThreads->doall = doallTasks;
     newThreads->error_count = 0;
-
-    // Initialize occupency array and task lists
-    memset(newThreads->occupency, 0, sizeof(int) * maxthreads);
-
-    int success = 1;
     for (int i = 0; i < maxthreads; i++) {
+        newThreads->occupency[i] = 0;
         if (initNodeGroup(&newThreads->scheduledTasks[i]) != 0) {
-            success = 0;
-            break;
+            // Free previously initialised groups
+            for (int j = 0; j < i; j++) {
+                cleanupNodeGroup(&newThreads->scheduledTasks[j]);
+            }
+            free(newThreads);
+            return NULL;
         }
     }
-
-    if (!success) {
-        // Clean up on failure
-        for (int i = 0; i < maxthreads; i++) {
-            cleanupNodeGroup(&newThreads->scheduledTasks[i]);
-        }
-        pthread_mutex_destroy(&newThreads->mutex);
-        free(newThreads);
-        return NULL;
-    }
-
     return newThreads;
 }
 
 /**
- * Clean up thread system and free resources
- * @param t Thread system to clean up
- */
-void cleanupThreads(Threads* t) {
-    if (!t) return;
-
-    // Clean up each node group
-    for (int i = 0; i < maxthreads; i++) {
-        cleanupNodeGroup(&t->scheduledTasks[i]);
-    }
-
-    // Destroy mutex
-    pthread_mutex_destroy(&t->mutex);
-
-    // Free thread system
-    free(t);
-}
-
-/**
- * Add a task to a node group with mutex protection
- * @param g Node group
+ * Append a task to a node group.
+ *
+ * The caller must supply a pointer to the NodeGroup so that
+ * modifications affect the original list.  A mutex protects
+ * concurrent inserts.
+ *
+ * @param g Pointer to the NodeGroup
  * @param task Task to add
  * @return 0 on success, -1 on failure
  */
 int addTaskToGroup(NodeGroup* g, Task* task) {
     if (!g || !task) return -1;
-
     pthread_mutex_lock(&g->mutex);
-
     Node* current = g->head;
+    // Ensure there is a sentinel node
+    if (!current) {
+        g->head = malloc(sizeof(Node));
+        if (!g->head) {
+            pthread_mutex_unlock(&g->mutex);
+            return -1;
+        }
+        g->head->content = NULL;
+        g->head->next = NULL;
+        current = g->head;
+    }
     while (current->next) {
         current = current->next;
     }
-
-    Node* new_node = malloc(sizeof(Node));
-    if (!new_node) {
+    Node* new = malloc(sizeof(Node));
+    if (!new) {
         pthread_mutex_unlock(&g->mutex);
         return -1;
     }
-
-    new_node->next = NULL;
-    new_node->content = (void*)task;
-    current->next = new_node;
-
+    new->next = NULL;
+    new->content = (void*)task;
+    current->next = new;
     pthread_mutex_unlock(&g->mutex);
     return 0;
 }
 
 /**
- * Add a task to the least loaded thread
- * @param t Thread system
- * @param task Function to execute
- * @param data Data to pass to function
+ * Add a task to the least loaded thread.
+ *
+ * The function searches for the queue with the smallest occupancy,
+ * allocates a new Task structure and appends it to that queue.
+ * A global mutex is used to protect the occupancy array during the
+ * search and update.  The caller is responsible for freeing the
+ * Task structure when it is no longer needed.
+ *
+ * @param t Pointer to the Threads system
+ * @param task Function to execute in the worker
+ * @param data Data to pass to the function
  * @return 0 on success, -1 on failure
  */
 int addTaskInThreads(Threads* t, void (*task)(void* param), void* data) {
     if (!t || !task) return -1;
-
-    pthread_mutex_lock(&t->mutex);
-
-    // Find the least loaded thread
+    pthread_mutex_lock(&global_mutex);
     int min = t->occupency[0];
     int slot = 0;
-    for (int i = 0; i < maxthreads; i++) {
+    for (int i = 1; i < maxthreads; i++) {
         if (t->occupency[i] < min) {
             min = t->occupency[i];
             slot = i;
         }
     }
-
-    // Create and add the task
+    // Allocate and add the new task
     Task* ntsk = malloc(sizeof(Task));
     if (!ntsk) {
-        pthread_mutex_unlock(&t->mutex);
+        pthread_mutex_unlock(&global_mutex);
         return -1;
     }
-
     ntsk->task = task;
     ntsk->data = data;
-
-    int result = addTaskToGroup(&t->scheduledTasks[slot], ntsk);
-    if (result == 0) {
-        t->occupency[slot]++;
-    } else {
+    if (addTaskToGroup(&t->scheduledTasks[slot], ntsk) != 0) {
         free(ntsk);
+        pthread_mutex_unlock(&global_mutex);
+        return -1;
     }
-
-    pthread_mutex_unlock(&t->mutex);
-    return result;
+    t->occupency[slot]++;
+    pthread_mutex_unlock(&global_mutex);
+    return 0;
 }
 
 /**
- * Execute all tasks in the thread system
+ * Execute all queued tasks in the thread system.
+ *
+ * This function spawns one worker thread per queue, waits for each
+ * thread to finish and returns the number of errors encountered.  A
+ * thread error is recorded when the call to pthread_create or
+ * pthread_join returns a non‑zero value.
+ *
  * @param t Thread system
- * @return 0 on success, number of failed threads otherwise
+ * @return 0 on success, >0 if one or more thread operations failed
  */
 int handleThreads(Threads* t) {
     if (!t) return -1;
-
-    int error_count = 0;
-
-    // Create threads
+    int err = 0;
     for (int i = 0; i < maxthreads; i++) {
-        int result = pthread_create(&t->threads[i], NULL, t->doall, (void*)&t->scheduledTasks[i]);
-        if (result != 0) {
-            fprintf(stderr, "Error creating thread %d: %s\n", i, strerror(result));
-            error_count++;
+        int rc = pthread_create(&t->threads[i], NULL, t->doall, (void*)&t->scheduledTasks[i]);
+        if (rc != 0) {
+            err++;
         }
     }
-
-    // Wait for all threads to complete
     for (int i = 0; i < maxthreads; i++) {
-        if (t->threads[i] != 0) {
-            int result = pthread_join(t->threads[i], NULL);
-            if (result != 0) {
-                fprintf(stderr, "Error joining thread %d: %s\n", i, strerror(result));
-                error_count++;
-            }
+        int rc = pthread_join(t->threads[i], NULL);
+        if (rc != 0) {
+            err++;
         }
     }
-
-    // Reset occupency
-    pthread_mutex_lock(&t->mutex);
-    memset(t->occupency, 0, sizeof(int) * maxthreads);
-    pthread_mutex_unlock(&t->mutex);
-
-    return error_count;
+    t->error_count = err;
+    return err;
 }
 
 /**
- * Add content to a node group with mutex protection
- * @param ng Pointer to node group
+ * Append arbitrary content to a NodeGroup.
+ *
+ * The function locks the NodeGroup's mutex before appending the
+ * content and unlocks it after the insertion.  A new node is
+ * allocated to hold the content pointer.
+ *
+ * @param ng Pointer to NodeGroup
  * @param content Content to add
  * @return 0 on success, -1 on failure
  */
 int addContent(NodeGroup* ng, void* content) {
-    if (!ng || !content) return -1;
-
+    if (!ng) return -1;
     pthread_mutex_lock(&ng->mutex);
-
     Node* current = ng->head;
+    // Create sentinel if needed
+    if (!current) {
+        ng->head = malloc(sizeof(Node));
+        if (!ng->head) {
+            pthread_mutex_unlock(&ng->mutex);
+            return -1;
+        }
+        ng->head->content = NULL;
+        ng->head->next = NULL;
+        current = ng->head;
+    }
     while (current->next) {
         current = current->next;
     }
-
-    Node* new_node = malloc(sizeof(Node));
-    if (!new_node) {
+    Node* node = malloc(sizeof(Node));
+    if (!node) {
         pthread_mutex_unlock(&ng->mutex);
         return -1;
     }
-
-    new_node->content = content;
-    new_node->next = NULL;
-    current->next = new_node;
-
+    node->content = content;
+    node->next = NULL;
+    current->next = node;
     pthread_mutex_unlock(&ng->mutex);
     return 0;
+}
+
+/**
+ * Clean up a node group.
+ *
+ * Frees all nodes in the group (including the sentinel) and
+ * destroys the associated mutex.  The list head pointer is set to
+ * NULL.
+ *
+ * @param ng Pointer to the NodeGroup to clean up
+ */
+void cleanupNodeGroup(NodeGroup* ng) {
+    if (!ng) return;
+    pthread_mutex_lock(&ng->mutex);
+    Node* current = ng->head;
+    while (current) {
+        Node* tmp = current;
+        current = current->next;
+        free(tmp);
+    }
+    ng->head = NULL;
+    pthread_mutex_unlock(&ng->mutex);
+    pthread_mutex_destroy(&ng->mutex);
+}
+
+/**
+ * Clean up a thread system and free its resources.
+ *
+ * This function calls cleanupNodeGroup on each scheduled task queue
+ * and then frees the Threads structure itself.  It also destroys
+ * the global mutex used to protect the occupancy counters.
+ *
+ * @param t Pointer to the thread system to clean up
+ */
+void cleanupThreads(Threads* t) {
+    if (!t) return;
+    for (int i = 0; i < maxthreads; i++) {
+        cleanupNodeGroup(&t->scheduledTasks[i]);
+    }
+    pthread_mutex_destroy(&global_mutex);
+    free(t);
 }

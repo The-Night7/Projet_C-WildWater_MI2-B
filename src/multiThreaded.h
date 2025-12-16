@@ -10,7 +10,7 @@
 
 /**
  * Number of threads to use for parallel processing
- * Can be adjusted based on the number of CPU cores available
+ * Can be adjusted based on the number of CPU cores
  */
 #define maxthreads 4
 
@@ -20,7 +20,7 @@
 extern clock_t thread_start, thread_stop;
 
 /**
- * Global mutex for protecting shared data access
+ * Global mutex for protecting shared data
  */
 extern pthread_mutex_t global_mutex;
 
@@ -57,7 +57,6 @@ typedef struct {
     pthread_t threads[maxthreads];
     void* (*doall)(void* self);
     int error_count;      // Count of thread errors
-    pthread_mutex_t mutex; // Mutex for thread system operations
 } Threads;
 
 /**

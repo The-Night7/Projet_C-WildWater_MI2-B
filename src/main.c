@@ -61,14 +61,14 @@ static double solve_leaks(Station* node, double input_vol, Station* u,
     // Count valid outgoing connections for this facility
     int valid_count = 0;
     AdjNode* curr = node->children;
-
+    
     while (curr) {
         if (curr->factory == NULL || curr->factory == u) {
             valid_count++;
         }
         curr = curr->next;
     }
-
+    
     // Early termination if no valid connections
     if (valid_count == 0) return 0.0;
 
@@ -95,7 +95,7 @@ static double solve_leaks(Station* node, double input_vol, Station* u,
             }
 
             double vol_arrived = vol_per_pipe - pipe_loss;
-
+            
             // Early termination for negligible volume
             if (vol_arrived > 0.001) {
                 // Add local and recursive losses
@@ -132,7 +132,7 @@ static void leak_branch_task_wrapper(void* arg) {
 /**
  * Calculates leaks for a facility using multithreading for branches
  * This improves performance by processing each outgoing branch in parallel
- * Optimized version with better memory management, mutex protection and error handling
+ * Optimized version with better memory management and early termination
  *
  * @param node     Starting station
  * @param volume   Input volume
@@ -145,12 +145,12 @@ static double calculate_leaks_mt(Station* node, double volume, Station* facility
     // Count valid outgoing connections
     int count = 0;
     AdjNode* curr = node->children;
-
+    
     // Pre-allocate arrays for better performance
     AdjNode** valid_connections = NULL;
     double* pipe_losses = NULL;
     double* volumes_arrived = NULL;
-
+    
     // First pass: count valid connections
     while (curr) {
         if (curr->factory == NULL || curr->factory == facility) {
@@ -158,9 +158,9 @@ static double calculate_leaks_mt(Station* node, double volume, Station* facility
         }
         curr = curr->next;
     }
-
+    
     if (count == 0) return 0.0;
-
+    
     // If only one branch or few branches, use direct calculation for better performance
     if (count <= 2) {
         double max_leak_val = 0.0;
@@ -173,150 +173,85 @@ static double calculate_leaks_mt(Station* node, double volume, Station* facility
     valid_connections = (AdjNode**)malloc(count * sizeof(AdjNode*));
     pipe_losses = (double*)malloc(count * sizeof(double));
     volumes_arrived = (double*)malloc(count * sizeof(double));
-
+    
     if (!valid_connections || !pipe_losses || !volumes_arrived) {
         fprintf(stderr, "Memory allocation failed for connection arrays\n");
         free(valid_connections);
         free(pipe_losses);
         free(volumes_arrived);
-
+        
         // Fallback to direct calculation
         double max_leak_val = 0.0;
         char* max_from = NULL;
         char* max_to = NULL;
         return solve_leaks(node, volume, facility, &max_leak_val, &max_from, &max_to);
     }
-
+    
     // Second pass: collect valid connections and pre-calculate losses
     curr = node->children;
     int idx = 0;
     double vol_per_pipe = volume / count;
-
+    
     while (curr && idx < count) {
         if (curr->factory == NULL || curr->factory == facility) {
             valid_connections[idx] = curr;
-
+            
             // Pre-calculate pipe loss
             if (curr->leak_perc > 0.001) {
                 pipe_losses[idx] = vol_per_pipe * (curr->leak_perc / 100.0);
             } else {
                 pipe_losses[idx] = 0.0;
             }
-
+            
             // Pre-calculate volume that arrives
             volumes_arrived[idx] = vol_per_pipe - pipe_losses[idx];
             idx++;
         }
         curr = curr->next;
     }
-
+    
     // Setup thread system for parallel processing
     Threads* thread_system = setupThreads();
-    if (!thread_system) {
-        fprintf(stderr, "Failed to initialize thread system, falling back to sequential processing\n");
-
-        // Fallback to direct calculation
-    free(valid_connections);
-    free(pipe_losses);
-    free(volumes_arrived);
-
-        double max_leak_val = 0.0;
-        char* max_from = NULL;
-        char* max_to = NULL;
-        return solve_leaks(node, volume, facility, &max_leak_val, &max_from, &max_to);
-    }
-
+    
     // Create a NodeGroup to store results
     NodeGroup results;
-    if (initNodeGroup(&results) != 0) {
-        fprintf(stderr, "Failed to initialize results group, falling back to sequential processing\n");
-
-        // Fallback to direct calculation
-        cleanupThreads(thread_system);
-        free(valid_connections);
-        free(pipe_losses);
-        free(volumes_arrived);
-
-        double max_leak_val = 0.0;
-        char* max_from = NULL;
-        char* max_to = NULL;
-        return solve_leaks(node, volume, facility, &max_leak_val, &max_from, &max_to);
-            }
-
+    initNodeGroup(&results);
+    
     // Prepare tasks for each branch - optimized to reduce memory allocations
     double total_pipe_loss = 0.0;
     double global_max_leak = 0.0;
     char* global_max_from = NULL;
     char* global_max_to = NULL;
-
-    // Track memory allocations for cleanup in case of error
-    int task_count = 0;
-    LeakTaskData** task_data_array = malloc(count * sizeof(LeakTaskData*));
-    if (!task_data_array) {
-        fprintf(stderr, "Failed to allocate task data array\n");
-
-        // Fallback to direct calculation
-        cleanupNodeGroup(&results);
-        cleanupThreads(thread_system);
-        free(valid_connections);
-        free(pipe_losses);
-        free(volumes_arrived);
-
-        double max_leak_val = 0.0;
-        char* max_from = NULL;
-        char* max_to = NULL;
-        return solve_leaks(node, volume, facility, &max_leak_val, &max_from, &max_to);
-        }
-
+    
     for (int i = 0; i < count; i++) {
         // Skip branches with negligible volume
         if (volumes_arrived[i] <= 0.001) {
             total_pipe_loss += pipe_losses[i];
             continue;
         }
-
-        // Track maximum pipe loss (with mutex protection)
-        pthread_mutex_lock(&global_mutex);
+        
+        // Track maximum pipe loss
         if (pipe_losses[i] > global_max_leak) {
             global_max_leak = pipe_losses[i];
             global_max_from = node->name;
             global_max_to = valid_connections[i]->target->name;
         }
-        pthread_mutex_unlock(&global_mutex);
-
+        
         total_pipe_loss += pipe_losses[i];
-
+        
         // Create task for downstream calculation
         double* branch_result = malloc(sizeof(double));
         double* max_leak_val = malloc(sizeof(double));
         char** max_from = malloc(sizeof(char*));
         char** max_to = malloc(sizeof(char*));
-
-        if (!branch_result || !max_leak_val || !max_from || !max_to) {
-            // Handle allocation failure
-            free(branch_result);
-            free(max_leak_val);
-            free(max_from);
-            free(max_to);
-            continue;
-        }
-
+        
         *branch_result = 0.0;  // Will be updated by the task
         *max_leak_val = 0.0;   // Initialize max leak
         *max_from = NULL;
         *max_to = NULL;
-
+        
         // Create task data
         LeakTaskData* task_data = malloc(sizeof(LeakTaskData));
-        if (!task_data) {
-            // Handle allocation failure
-            free(branch_result);
-            free(max_leak_val);
-            free(max_from);
-            free(max_to);
-            continue;
-        }
-
         task_data->node = valid_connections[i]->target;
         task_data->input_vol = volumes_arrived[i];
         task_data->facility = facility;
@@ -324,67 +259,41 @@ static double calculate_leaks_mt(Station* node, double volume, Station* facility
         task_data->max_leak_val = max_leak_val;
         task_data->max_from = max_from;
         task_data->max_to = max_to;
-
-        // Track for cleanup
-        task_data_array[task_count++] = task_data;
-
+        
         // Add result to results list
-        if (addContent(&results, task_data) != 0) {
-            fprintf(stderr, "Failed to add task data to results\n");
-
-            // Clean up this allocation
-            free(branch_result);
-            free(max_leak_val);
-            free(max_from);
-            free(max_to);
-            free(task_data);
-            task_count--; // Remove from tracking
-            continue;
-        }
-
+        addContent(&results, task_data);
+        
         // Schedule task
-        if (addTaskInThreads(thread_system, leak_branch_task_wrapper, task_data) != 0) {
-            fprintf(stderr, "Failed to schedule task\n");
-
-            // Task data is already in results list, so we don't free it here
-            // It will be cleaned up later when processing results
-            continue;
-        }
+        addTaskInThreads(thread_system, leak_branch_task_wrapper, task_data);
     }
-
+    
     // Free pre-allocated arrays
     free(valid_connections);
     free(pipe_losses);
     free(volumes_arrived);
-
+    
     // Execute all tasks in parallel
     thread_start = clock();
-    int thread_errors = handleThreads(thread_system);
+    handleThreads(thread_system);
     thread_stop = clock();
-
-    if (thread_errors > 0) {
-        fprintf(stderr, "Warning: %d thread errors occurred\n", thread_errors);
-    }
-
+    
     // Sum up results
     double downstream_leaks = 0.0;
-
+    
     Node* current = results.head->next;  // Skip head node (empty)
     while (current) {
         LeakTaskData* data = (LeakTaskData*)current->content;
         if (data) {
             // Add branch result to total
             downstream_leaks += *(data->leak_result);
-
-            // Update global max leak if needed (with mutex protection)
-            pthread_mutex_lock(&global_mutex);
+            
+            // Update global max leak if needed
             if (*(data->max_leak_val) > global_max_leak) {
                 global_max_leak = *(data->max_leak_val);
                 global_max_from = *(data->max_from);
                 global_max_to = *(data->max_to);
             }
-            pthread_mutex_unlock(&global_mutex);
-
+            
             // Free allocated memory
             free(data->leak_result);
             free(data->max_leak_val);
@@ -392,12 +301,12 @@ static double calculate_leaks_mt(Station* node, double volume, Station* facility
             free(data->max_to);
             free(data);
         }
-
+        
         Node* tmp = current;
         current = current->next;
         free(tmp);
     }
-
+    
     // Display critical section info
     if (global_max_leak > 0.0) {
         fprintf(stderr, "\n=== BONUS INFO ===\n");
@@ -407,11 +316,13 @@ static double calculate_leaks_mt(Station* node, double volume, Station* facility
         fprintf(stderr, "Loss: %.6f M.m3\n", global_max_leak / 1000.0);
         fprintf(stderr, "=================\n");
     }
+    
+    // Clean up the results list's sentinel and its mutex
+    cleanupNodeGroup(&results);
 
-    // Clean up thread system
+    // Free thread system (queues, mutexes, and structure)
     cleanupThreads(thread_system);
-    free(task_data_array);
-
+    
     // Return total leaks (pipe losses + downstream leaks)
     return total_pipe_loss + downstream_leaks;
 }
@@ -493,12 +404,12 @@ int main(int argc, char** argv) {
         char* p = line;
         int c = 0;
         cols[c++] = p;
-
+        
         while (*p && c < 5) {
             if (*p == ';') {
                 *p = '\0';
                 cols[c++] = p + 1;
-                }
+            }
             p++;
         }
 
@@ -521,22 +432,24 @@ int main(int argc, char** argv) {
             // Create stations if needed
             Station* pa = NULL;
             Station* ch = NULL;
+
             if (cols[1]) {
                 pa = find_station(root, cols[1]);
                 if (!pa) {
                     root = insert_station(root, cols[1], 0, 0, 0);
                     pa = find_station(root, cols[1]);
-                        station_count++;
-                    }
+                    station_count++;
+                }
             }
+
             if (cols[2]) {
                 ch = find_station(root, cols[2]);
                 if (!ch) {
                     root = insert_station(root, cols[2], 0, 0, 0);
                     ch = find_station(root, cols[2]);
                     station_count++;
-                    }
                 }
+            }
 
             // Create connections between stations
             if (pa && ch) {
@@ -552,11 +465,11 @@ int main(int argc, char** argv) {
                         factory = find_station(root, cols[0]);
                         station_count++;
                     }
-        } else {
+                } else {
                     // Implicit facility based on section type
                     if (cols[3]) {
                         factory = ch;  // Source→facility: facility is downstream
-        } else {
+                    } else {
                         factory = pa;  // Facility→storage: facility is upstream
                     }
                 }
@@ -583,7 +496,8 @@ int main(int argc, char** argv) {
                     capacity_count++;
                 }
             }
-    } else {
+
+        } else {
             // Histogram mode: aggregate according to mode
 
             if ((mode_histo == 1 || mode_histo == 4) && cols[1] && !cols[2] && cols[3]) {
