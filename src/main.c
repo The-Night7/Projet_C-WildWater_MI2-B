@@ -324,15 +324,15 @@ static double calculate_leaks_mt(Station* node, double volume, Station* facility
     return total_pipe_loss + downstream_leaks;
 }
 
-/**
- * Counts total number of stations in the tree
- * @param node Root node
- * @return Number of stations
- */
-static int count_stations(Station* node) {
-    if (!node) return 0;
-    return 1 + count_stations(node->left) + count_stations(node->right);
-}
+// /**
+//  * Counts total number of stations in the tree
+//  * @param node Root node
+//  * @return Number of stations
+//  */
+// static int count_stations(Station* node) {
+//     if (!node) return 0;
+//     return 1 + count_stations(node->left) + count_stations(node->right);
+// }
 
 /**
  * Program entry point
