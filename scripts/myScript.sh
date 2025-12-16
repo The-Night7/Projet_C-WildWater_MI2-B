@@ -14,7 +14,7 @@
 #   - <mode>: 'histo' (histogram) or 'leaks' (leakage)
 #   - <argument>:
 #     * In 'histo' mode: max, src, real or all
-#     * In 'leaks' mode: facility ID, comma-separated facility list, or 'all'
+#     * In 'leaks' mode: facility ID or comma-separated facility list
 # -----------------------------------------------------------------------------
 
 # Navigate to project root
@@ -49,9 +49,8 @@ usage() {
       ${BOLD}<data_file>${RESET}      Path to .dat or .csv file (optional).
                           If omitted, uses $DEFAULT_INPUT.
       ${BOLD}histo${RESET}            Generates histogram (parameter: max|src|real|all).
-      ${BOLD}leaks${RESET}            Calculates leakage for specified facility or all facilities.
-                          Parameter: facility name, comma-separated list,
-                          or "all" for all facilities.
+      ${BOLD}leaks${RESET}            Calculates leakage for specified facility.
+                          Parameter: facility name or comma-separated list.
 
     ${BOLD}Examples:${RESET}
       $0 histo max
@@ -60,7 +59,6 @@ usage() {
       $0 leaks Facility\ complex\ #RH400057F
       $0 data/my_file.dat leaks "Facility complex #RH400057F"
       $0 leaks "Facility A,Facility B,Facility C"
-      $0 leaks all
 EOF
     exit 1
 }
@@ -123,6 +121,12 @@ log_progress "Mode: ${BOLD}$COMMAND${RESET}, Parameter: ${BOLD}$PARAM${RESET}, F
 # Check if data file exists
 if [ ! -f "$DATAFILE" ]; then
     log_error "File '$DATAFILE' does not exist."
+    exit 1
+fi
+
+# Check if trying to use "leaks all" mode (not supported)
+if [ "$COMMAND" = "leaks" ] && [ "$PARAM" = "all" ]; then
+    log_error "Mode 'leaks all' is not supported. Please specify a facility name instead."
     exit 1
 fi
 
@@ -463,7 +467,7 @@ EOF
 
                 # Get progress information if available
                 if [ -f "$TEMP_ERR_FILE" ]; then
-                    PROGRESS_INFO=$(grep -o "Lines processed : [0-9]*" "$TEMP_ERR_FILE" | tail -n1)
+                    PROGRESS_INFO=$(grep -o "Lines processed: [0-9]*" "$TEMP_ERR_FILE" | tail -n1)
                     if [ -n "$PROGRESS_INFO" ]; then
                         printf "\r[%c] %s (${ELAPSED}s)" "${spin:$i:1}" "$PROGRESS_INFO"
                     else
@@ -517,92 +521,8 @@ EOF
             rm -f "$TEMP_ERR_FILE" "$TEMP_OUT_FILE"
         }
 
-        # "all" mode: calculate for all facilities
-        if [ "$PARAM" = "all" ]; then
-            # Check support in source code
-            if ! grep -q "define ALL_LEAKS" "$SRC_DIR/main.c" 2>/dev/null; then
-                log_error "C program doesn't support 'all' mode."
-                exit 1
-            fi
-
-            # Execute and track progress
-            echo -e "${YELLOW}Calculating leaks for all facilities...${RESET}"
-            START_TIME=$SECONDS
-            PROGRESS_FILE="$CACHE_DIR/progress_all.tmp"
-            TEMP_LEAK_FILE="$CACHE_DIR/leaks_all.tmp"
-
-            # Run program with nice to reduce priority
-            nice -n 10 "$EXEC_MAIN" "$DATAFILE" "all" > "$TEMP_LEAK_FILE" 2> "$PROGRESS_FILE" &
-            PID=$!
-
-            # Display animated progress bar with timeout
-            i=0
-            spin='-\|/'
-            TIMEOUT=600  # 10 minutes max
-            START_PROC_TIME=$SECONDS
-
-            while kill -0 $PID 2>/dev/null; do
-                # Check if timeout is reached
-                ELAPSED=$((SECONDS - START_PROC_TIME))
-                if [ $ELAPSED -gt $TIMEOUT ]; then
-                    echo -e "\n${RED}Timeout reached (${TIMEOUT}s). Forcing calculation to stop.${RESET}"
-                    kill -9 $PID 2>/dev/null
-                    break
-                fi
-
-                i=$(( (i+1) % 4 ))
-
-                # Get progress information if available
-                if [ -f "$PROGRESS_FILE" ]; then
-                    PROGRESS_INFO=$(grep -o "Lines processed : [0-9]*" "$PROGRESS_FILE" | tail -n1)
-                    if [ -n "$PROGRESS_INFO" ]; then
-                        printf "\r[%c] %s (${ELAPSED}s)" "${spin:$i:1}" "$PROGRESS_INFO"
-                    else
-                        printf "\r[%c] Processing... (${ELAPSED}s)" "${spin:$i:1}"
-                    fi
-                else
-                    printf "\r[%c] Processing... (${ELAPSED}s)" "${spin:$i:1}"
-                fi
-
-                sleep 0.2
-            done
-
-            # Clear progress line
-            printf "\r%s\n" "$(printf ' %.0s' {1..70})"
-
-            wait $PID
-            RESULT_CODE=$?
-
-            # Cleanup
-            rm -f "$PROGRESS_FILE"
-
-            if [ $RESULT_CODE -ne 0 ] || [ ! -s "$TEMP_LEAK_FILE" ]; then
-                log_error "Leak calculation failed."
-                rm -f "$TEMP_LEAK_FILE"
-                exit 1
-            fi
-
-            # Verify file contains data in facility;value format
-            if grep -q ";" "$TEMP_LEAK_FILE"; then
-                # Update result files - Use cat for speed
-                cat "$TEMP_LEAK_FILE" > "$LEAK_FILE"
-                cat "$TEMP_LEAK_FILE" > "$CACHE_FILE"
-                echo "Updated result files successfully"
-            else
-                log_error "Incorrect output format in temporary file."
-                rm -f "$TEMP_LEAK_FILE"
-                exit 1
-            fi
-
-            rm -f "$TEMP_LEAK_FILE"
-
-            # Calculate and display total leak volume - Use awk for efficiency
-            TOTAL_LEAKS=$(awk -F';' '{if (NF==2) s+=$2} END {printf "%.6f", s}' "$LEAK_FILE")
-            echo -e "\n${BOLD}Total leak volume:${RESET} ${BLUE}${TOTAL_LEAKS} M.m3${RESET}"
-            log_success "Calculation for all facilities completed"
-
         # Process multiple facilities (comma-separated)
-        elif [[ "$PARAM" == *","* ]]; then
+        if [[ "$PARAM" == *","* ]]; then
             IFS=',' read -ra FACTORIES <<< "$PARAM"
             TOTAL_FACTORIES=${#FACTORIES[@]}
 

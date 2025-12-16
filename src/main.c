@@ -275,9 +275,15 @@ int main(int argc, char** argv) {
     if (strcmp(arg_mode, "max") == 0) mode_histo = 1;
     else if (strcmp(arg_mode, "src") == 0) mode_histo = 2;
     else if (strcmp(arg_mode, "real") == 0) mode_histo = 3;
-    else if (strcmp(arg_mode, "all") == 0) mode_histo = 4; // MODIFIÉ: "all" est maintenant un mode histogramme (4)
-    else if (strcmp(arg_mode, "bonus") == 0) mode_leaks = 1;
-    else mode_leaks = 1; // Facility ID
+    else if (strcmp(arg_mode, "all") == 0) {
+        // Vérifier si c'est un mode histogramme ou un mode fuites
+        if (argc > 3 && strcmp(argv[3], "leaks") == 0) {
+            mode_all_leaks = 1;
+        } else {
+            mode_histo = 4; // Mode histogramme "all"
+        }
+    }
+    else mode_leaks = 1; // Facility ID - Tous les autres arguments sont considérés comme des IDs d'installation
 
     // Initialization
     Station* root = NULL;

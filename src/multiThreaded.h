@@ -6,7 +6,8 @@
 #include <time.h>
 // Defining essential elements
 
-#define maxthreads 4
+// Réduire temporairement à 1 thread pour tester les performances
+#define maxthreads 1
 
 // Déclaration des variables de temps pour le timing
 extern clock_t thread_start, thread_stop;
