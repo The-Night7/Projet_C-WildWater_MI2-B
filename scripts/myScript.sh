@@ -408,7 +408,7 @@ EOF
                 fi
                 echo -e "${BOLD}Leak volume for $FACTORY:${RESET} ${BLUE}${CACHED_VAL} M.m3${RESET}"
                 return
-            }
+            fi
 
             # Calculate leakage with progress indicator
             echo -e "${YELLOW}Calculation in progress...${RESET}"
@@ -478,7 +478,7 @@ EOF
                 # Display critical section information if available
                 if [ -f "$TEMP_ERR_FILE" ]; then
                     if grep -q "BONUS INFO" "$TEMP_ERR_FILE"; then
-                         echo -e "\n${YELLOW}=== DETECTION TRONCON CRITIQUE ===${RESET}"
+                         echo -e "\n${YELLOW}=== DETECTION CRITICAL SECTION ===${RESET}"
                          sed -n '/=== BONUS INFO ===/,/=================/p' "$TEMP_ERR_FILE" | sed '1d;$d'
                          echo -e "${YELLOW}==================================${RESET}"
                     fi
