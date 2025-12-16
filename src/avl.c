@@ -1,9 +1,8 @@
 /*
  * avl.c
  *
- * Implementation of an AVL tree for the C-WildWater project.
- * Stores hydraulic stations with their data and connections,
- * allowing to model the flow graph for leak calculations.
+ * Implementation of an AVL tree for storing hydraulic stations.
+ * Manages station data and their interconnections.
  */
 
 #include <stdio.h>
@@ -15,7 +14,12 @@
 // Internal utility functions
 // -----------------------------------------------------------------------------
 
-// Duplicates a string
+/**
+ * Creates a duplicate of a string
+ *
+ * @param s  String to duplicate
+ * @return   New allocated string or NULL if allocation fails
+ */
 static char* my_strdup(const char* s) {
     if (!s) return NULL;
     size_t len = strlen(s) + 1;
@@ -24,22 +28,34 @@ static char* my_strdup(const char* s) {
     return new;
 }
 
-// Returns the maximum of two integers
+/**
+ * Returns the maximum of two integers
+ */
 static int max_int(int a, int b) {
     return (a > b) ? a : b;
 }
 
-// Returns the height of a node (0 if NULL)
+/**
+ * Gets the height of a node (0 if NULL)
+ */
 static int get_height(Station* n) {
     return n ? n->height : 0;
 }
 
-// Calculates the balance factor of a node
+/**
+ * Calculates the balance factor of a node
+ * Positive value means left-heavy, negative means right-heavy
+ */
 static int get_balance(Station* n) {
     return n ? get_height(n->left) - get_height(n->right) : 0;
 }
 
-// Creates a new initialized station node
+/**
+ * Creates a new initialized station node
+ *
+ * @param name  Station identifier
+ * @return      Newly allocated station
+ */
 static Station* create_node(char* name) {
     Station* node = (Station*)malloc(sizeof(Station));
     if (!node) {
@@ -58,7 +74,12 @@ static Station* create_node(char* name) {
     return node;
 }
 
-// Right rotation to rebalance the AVL tree
+/**
+ * Performs a right rotation to rebalance the AVL tree
+ *
+ * @param y  Root node before rotation
+ * @return   New root node after rotation
+ */
 static Station* right_rotate(Station* y) {
     Station* x = y->left;
     Station* T2 = x->right;
@@ -69,7 +90,12 @@ static Station* right_rotate(Station* y) {
     return x;
 }
 
-// Left rotation to rebalance the AVL tree
+/**
+ * Performs a left rotation to rebalance the AVL tree
+ *
+ * @param x  Root node before rotation
+ * @return   New root node after rotation
+ */
 static Station* left_rotate(Station* x) {
     Station* y = x->right;
     Station* T2 = y->left;
@@ -84,7 +110,13 @@ static Station* left_rotate(Station* x) {
 // Public functions
 // -----------------------------------------------------------------------------
 
-// Searches for a station by name in the AVL tree
+/**
+ * Searches for a station by name in the AVL tree
+ *
+ * @param node  Root of the tree
+ * @param name  Station identifier to search for
+ * @return      Pointer to the station or NULL if not found
+ */
 Station* find_station(Station* node, char* name) {
     if (!node) return NULL;
     int cmp = strcmp(name, node->name);
@@ -93,7 +125,14 @@ Station* find_station(Station* node, char* name) {
     return find_station(node->right, name);
 }
 
-// Adds a connection between two stations for a specific factory
+/**
+ * Adds a connection between two stations
+ *
+ * @param parent   Source station
+ * @param child    Destination station
+ * @param leak     Leak percentage on this section
+ * @param factory  Factory associated with this connection
+ */
 void add_connection(Station* parent, Station* child, double leak, Station* factory) {
     if (!parent || !child) return;
 
@@ -120,7 +159,16 @@ void add_connection(Station* parent, Station* child, double leak, Station* facto
     parent->nb_children++;
 }
 
-// Inserts or updates a station in the AVL tree
+/**
+ * Inserts or updates a station in the AVL tree
+ *
+ * @param node  Root of the tree
+ * @param name  Station identifier
+ * @param cap   Capacity to add
+ * @param cons  Consumption to add
+ * @param real  Actual volume to add
+ * @return      New tree root after insertion/balancing
+ */
 Station* insert_station(Station* node, char* name, long cap, long cons, long real) {
     // Base case: create a new node
     if (!node) {
@@ -170,7 +218,11 @@ Station* insert_station(Station* node, char* name, long cap, long cons, long rea
     return node;
 }
 
-// Frees memory used by the tree and its connections
+/**
+ * Frees memory used by the tree and its connections
+ *
+ * @param node  Root of the tree to free
+ */
 void free_tree(Station* node) {
     if (!node) return;
 
@@ -190,26 +242,45 @@ void free_tree(Station* node) {
     free(node);
 }
 
-// Writes station data to a CSV file according to the specified mode
+/**
+ * Writes station data to a CSV file according to the specified mode
+ *
+ * @param node    Root of the tree
+ * @param output  Output file
+ * @param mode    Data type ("max", "src", "real", or "all")
+ */
 void write_csv(Station* node, FILE* output, char* mode) {
     if (!node) return;
 
     // Inorder traversal (left-root-right)
     write_csv(node->left, output, mode);
 
-    // Select value based on mode
-    double val = 0;
-    if (strcmp(mode, "max") == 0) {
-        val = node->capacity/1000.0;        // Maximum capacity
-    } else if (strcmp(mode, "src") == 0) {
-        val = node->consumption/1000.0;     // Captured volume
-    } else if (strcmp(mode, "real") == 0) {
-        val = node->real_qty/1000.0;        // Actual volume
-    }
+    if (strcmp(mode, "all") == 0) {
+        // Mode "all": display all three values on the same line
+        double max_val = node->capacity/1000.0;
+        double src_val = node->consumption/1000.0;
+        double real_val = node->real_qty/1000.0;
 
-    // Write only positive values
-    if (val > 0) {
-        fprintf(output, "%s;%.6f\n", node->name, val);
+        // Write only if at least one value is positive
+        if (max_val > 0 || src_val > 0 || real_val > 0) {
+            fprintf(output, "%s;%.6f;%.6f;%.6f\n",
+                   node->name, max_val, src_val, real_val);
+        }
+    } else {
+        // Standard modes (max, src, real)
+        double val = 0;
+        if (strcmp(mode, "max") == 0) {
+            val = node->capacity/1000.0;        // Maximum capacity
+        } else if (strcmp(mode, "src") == 0) {
+            val = node->consumption/1000.0;     // Captured volume
+        } else if (strcmp(mode, "real") == 0) {
+            val = node->real_qty/1000.0;        // Actual volume
+        }
+
+        // Write only positive values
+        if (val > 0) {
+            fprintf(output, "%s;%.6f\n", node->name, val);
+        }
     }
 
     write_csv(node->right, output, mode);
