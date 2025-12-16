@@ -27,7 +27,7 @@ BIN_DIR="src/bin"
 GRAPH_DIR="$DATA_DIR/output_images"
 EXEC_MAIN="$BIN_DIR/c-wildwater"
 LOG_FILE="$DATA_DIR/processing.log"
-DEFAULT_INPUT="$DATA_DIR/c-wildwater_v0.dat"
+DEFAULT_INPUT="$DATA_DIR/c-wildwater_v3.dat"
 CACHE_DIR="$DATA_DIR/.cache"
 
 # Create necessary directories

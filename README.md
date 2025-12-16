@@ -37,14 +37,22 @@ Un algorithme de parcours de graphe (DFS) optimisé pour calculer le volume tota
 
 Ce projet est conçu pour fonctionner sous un environnement **Linux** (ou WSL).
 
+### Cloner le projet
+```bash
+git clone [https://github.com/The-Night7/Projet_C-WildWater_MI2-B.git](https://github.com/The-Night7/Projet_C-WildWater_MI2-B.git)
+cd Projet_C-WildWater_MI2-B
+```
+
 **Dépendances nécessaires :**
 ```bash
 sudo apt update
 sudo apt install build-essential gnuplot make
+sudo apt install dos2unix
 ```
 ## Utilisation :
 ```bash
 dos2unix scripts/myScript.sh
+chmod +x scripts/myScript.sh
 ./scripts/myScript.sh histo max    # Capacité maximale
 ./scripts/myScript.sh histo src    # Volume sources
 ./scripts/myScript.sh histo real   # Volume réel traité
