@@ -21,9 +21,19 @@ add_executable(
         arborescence_prototype.txt
         README.md
         resume_synthetique_projet.txt
+<<<<<<< HEAD
+<<<<<<< HEAD
+        src/main.c
+=======
+=======
+>>>>>>> origin/main
         src/make_csv.c
         src/csv_io.c
         src/csv_io.h
         "src/main.c"
         src/histogram.h
+<<<<<<< HEAD
+>>>>>>> origin/teuteu_test
+=======
+>>>>>>> origin/main
 )
