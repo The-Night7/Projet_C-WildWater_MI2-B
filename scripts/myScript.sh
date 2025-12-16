@@ -17,7 +17,7 @@
 #     * In 'leaks' mode: facility ID or comma-separated facility list
 # -----------------------------------------------------------------------------
 
-# Navigate to project root
+# Navigate to project root directory
 cd "$(dirname "$0")/.." || exit 1
 
 # Path configuration
@@ -33,7 +33,7 @@ CACHE_DIR="$DATA_DIR/.cache"
 # Create necessary directories
 mkdir -p "$GRAPH_DIR" "$DATA_DIR" "$BIN_DIR" "$CACHE_DIR"
 
-# Display colors
+# Terminal colors for better readability
 BLUE='\033[0;34m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
@@ -63,7 +63,7 @@ EOF
     exit 1
 }
 
-# Display progress bar
+# Display progress bar for long-running operations
 show_progress() {
     local current=$1
     local total=$2
@@ -130,7 +130,7 @@ if [ "$COMMAND" = "leaks" ] && [ "$PARAM" = "all" ]; then
     exit 1
 fi
 
-# Always run make clean before compilation
+# Run make clean before compilation
 log_progress "Running make clean..."
 echo -ne "${YELLOW}"
 (cd "$SRC_DIR" && make clean) || {
@@ -178,7 +178,7 @@ case "$COMMAND" in
         OUT_CSV="$DATA_DIR/vol_${PARAM}.csv"
         echo -e "${YELLOW}Generating data...${RESET}"
 
-        # Execute with simulated progress bar
+        # Execute with simulated progress indicator
         "$EXEC_MAIN" "$DATAFILE" "$PARAM" > "$DATA_DIR/.temp_output" &
         PID=$!
 
@@ -213,12 +213,9 @@ case "$COMMAND" in
 
         log_success "Data generated and sorted successfully"
 
-# --- BRANCH: "ALL" BONUS MODE or STANDARD MODES ---
+        # Handle "all" mode (combined histogram) or standard modes
         if [ "$PARAM" = "all" ]; then
-            # ---------------------------------------------------------
-            # BONUS 1: Combined Histogram (Capacity / Source / Real)
-            # ---------------------------------------------------------
-            
+            # Combined Histogram (Capacity / Source / Real)
             # Temporary files
             TMP_MAX="$CACHE_DIR/.tmp_max"
             TMP_SRC="$CACHE_DIR/.tmp_src"
@@ -228,13 +225,13 @@ case "$COMMAND" in
 
             echo -e "${YELLOW}Generating combined data...${RESET}"
 
-            # 1. Generate the 3 files separately
+            # Generate the 3 files separately
             "$EXEC_MAIN" "$DATAFILE" "max"  > "$TMP_MAX"
             "$EXEC_MAIN" "$DATAFILE" "src"  > "$TMP_SRC"
             "$EXEC_MAIN" "$DATAFILE" "real" > "$TMP_REAL"
 
-            # 2. Merge into: ID;Max;Source;Real
-            # Use awk to join files on ID. Missing values default to 0.
+            # Merge into: ID;Max;Source;Real
+            # Join files on ID. Missing values default to 0.
             awk -F';' '
                 FNR==1 { file_idx++ }
                 file_idx==1 { max[$1] = $2; next }
@@ -251,8 +248,7 @@ case "$COMMAND" in
                 }
             ' "$TMP_MAX" "$TMP_SRC" "$TMP_REAL" > "$TMP_MERGED"
 
-            # 3. ASCENDING SORT (Small -> Big) on capacity (column 2)
-            # This ensures consistency with standard modes (Left to Right display)
+            # Sort on capacity (column 2)
             sort -t';' -k2,2g "$TMP_MERGED" > "$TMP_SORTED"
 
             # Cleanup intermediate files
@@ -263,10 +259,7 @@ case "$COMMAND" in
                 exit 1
             fi
 
-            # =========================================================
-            # GRAPH 1: TOP 10 (BIGGEST)
-            # =========================================================
-            # We take the END of the sorted file (tail)
+            # Generate Top 10 (biggest) graph
             IMG_BIG="$GRAPH_DIR/vol_all_big.png"
             GP_DATA_BIG="$DATA_DIR/data_all_big.dat"
             
@@ -289,7 +282,6 @@ set grid y
 set boxwidth 0.7 relative
 
 # Stacking: Blue (Bottom) -> Red (Middle) -> Green (Top)
-# Using ternary operators to handle potential negative values if data is inconsistent
 plot '$GP_DATA_BIG' using 4:xtic(1) title 'Real Output' lc rgb '#3366CC', \
      '' using (\$3-\$4 < 0 ? 0 : \$3-\$4) title 'Losses' lc rgb '#DC3912', \
      '' using (\$2-\$3 < 0 ? 0 : \$2-\$3) title 'Unused Capacity' lc rgb '#109618'
@@ -298,10 +290,7 @@ EOF
                 log_success "Top 10 Graph generated: ${BOLD}$IMG_BIG${RESET}"
             fi
 
-            # =========================================================
-            # GRAPH 2: BOTTOM 50 (SMALLEST)
-            # =========================================================
-            # We take the START of the sorted file (head)
+            # Generate Bottom 50 (smallest) graph
             IMG_SMALL="$GRAPH_DIR/vol_all_small.png"
             GP_DATA_SMALL="$DATA_DIR/data_all_small.dat"
             
@@ -323,7 +312,6 @@ set key outside top center horizontal
 set grid y
 set boxwidth 0.8 relative
 
-# Same stacking logic
 plot '$GP_DATA_SMALL' using 4:xtic(1) title 'Real Output' lc rgb '#3366CC', \
      '' using (\$3-\$4 < 0 ? 0 : \$3-\$4) title 'Losses' lc rgb '#DC3912', \
      '' using (\$2-\$3 < 0 ? 0 : \$2-\$3) title 'Unused Capacity' lc rgb '#109618'
@@ -336,18 +324,14 @@ EOF
             rm -f "$TMP_SORTED" "$GP_DATA_BIG" "$GP_DATA_SMALL"
 
         else
-            # ---------------------------------------------------------
-            # STANDARD MODES (max, src, real)
-            # ---------------------------------------------------------
+            # Standard modes (max, src, real)
             echo -e "${YELLOW}Creating histograms...${RESET}"
             
-            # Ensure the file is sorted in ASCENDING order (Small -> Big)
-            # -k2,2g = numeric sort on column 2
+            # Sort in ascending order (Small -> Big)
             SORTED_STD="$DATA_DIR/.sorted_std_asc"
             sort -t';' -k2,2g "$OUT_CSV" > "$SORTED_STD"
 
-            # 1. Top 10 (Largest)
-            # Since file is sorted Small -> Big, Top 10 are at the END (tail)
+            # Generate Top 10 (Largest) graph
             GP_BIG="$DATA_DIR/data_big.dat"
             tail -n 10 "$SORTED_STD" > "$GP_BIG"
             IMG_BIG="$GRAPH_DIR/vol_${PARAM}_big.png"
@@ -363,13 +347,11 @@ set datafile separator ';'
 set ylabel 'Volume (M.m3)'
 set xtics rotate by -45
 set grid y
-# Gnuplot preserves file order (Left=Top of file, Right=Bottom of file)
 plot '$GP_BIG' using 2:xtic(1) title 'Volume' lc rgb 'blue'
 EOF
             log_success "Top 10 image generated: ${BOLD}$IMG_BIG${RESET}"
 
-            # 2. Bottom 50 (Smallest)
-            # Since file is sorted Small -> Big, Bottom 50 are at the START (head)
+            # Generate Bottom 50 (Smallest) graph
             GP_SMALL="$DATA_DIR/data_small.dat"
             head -n 50 "$SORTED_STD" > "$GP_SMALL"
             IMG_SMALL="$GRAPH_DIR/vol_${PARAM}_small.png"
@@ -404,7 +386,7 @@ EOF
         CACHE_FILE="$CACHE_DIR/.leaks_cache.dat"
         touch "$CACHE_FILE"
 
-        # Internal function to process a facility - Optimized version
+        # Process a single facility
         process_factory() {
             local FACTORY="$1"
             # Clean up spaces
@@ -413,42 +395,36 @@ EOF
             echo -e "\n${YELLOW}Processing facility:${RESET} ${BOLD}$FACTORY${RESET}"
 
             # Generate unique filename based on hash of facility name
-            # to avoid conflicts with special characters
             local FACTORY_HASH=$(echo "$FACTORY" | md5sum | cut -d' ' -f1)
             local TEMP_ERR_FILE="$CACHE_DIR/err_${FACTORY_HASH}.tmp"
             local TEMP_OUT_FILE="$CACHE_DIR/out_${FACTORY_HASH}.tmp"
 
-            # Check Cache - Optimized to search for exact facility name
+            # Check cache for previous results
             CACHED_VAL=$(grep -F "$(echo "$FACTORY" | sed 's/;/\\;/g');" "$CACHE_FILE" | tail -n1 | cut -d';' -f2)
             if [ -n "$CACHED_VAL" ]; then
                 echo -e "${GREEN}[CACHE]${RESET} Result found in cache"
                 if ! grep -q "$(echo "$FACTORY" | sed 's/;/\\;/g');" "$LEAK_FILE" 2>/dev/null; then
-                    # Add only result in facility;value format to leaks.dat
                     echo "$FACTORY;$CACHED_VAL" >> "$LEAK_FILE"
                 fi
                 echo -e "${BOLD}Leak volume for $FACTORY:${RESET} ${BLUE}${CACHED_VAL} M.m3${RESET}"
                 return
-            fi
+            }
 
-            # C calculation with progress bar - Optimized version
+            # Calculate leakage with progress indicator
             echo -e "${YELLOW}Calculation in progress...${RESET}"
             T_START=$(date +%s%3N)
 
-            # Use nice to reduce process priority and ulimit to limit memory usage
-            # Also use stdbuf to disable output buffering
+            # Run calculation with reduced priority
             nice -n 10 stdbuf -oL -eL "$EXEC_MAIN" "$DATAFILE" "$FACTORY" > "$TEMP_OUT_FILE" 2> "$TEMP_ERR_FILE" &
             PID=$!
 
-            # Display animated progress bar
-            # Initialize a spinner to show progress and track elapsed time
+            # Display animated progress indicator
             i=0
             spin='-\|/'
             START_TIME=$SECONDS
 
             while kill -0 $PID 2>/dev/null; do
-                # Compute elapsed time since the start of the process
                 ELAPSED=$((SECONDS - START_TIME))
-
                 i=$(( (i+1) % 4 ))
 
                 # Get progress information if available
@@ -466,7 +442,7 @@ EOF
                 sleep 0.2
             done
 
-            # Wait for process to finish and get value
+            # Wait for process to finish and get result
             wait $PID
             EXIT_CODE=$?
 
@@ -477,9 +453,8 @@ EOF
                 VAL=""
             fi
 
-            # If file is empty or process was interrupted
+            # If calculation failed, try alternative method
             if [ -z "$VAL" ] || [ $EXIT_CODE -ne 0 ]; then
-                # Try with simpler and more direct approach
                 echo -e "\n${YELLOW}Retrying with alternative method...${RESET}"
                 VAL=$("$EXEC_MAIN" "$DATAFILE" "$FACTORY" 2>/dev/null | tr -d '\n\r')
             fi
@@ -492,19 +467,18 @@ EOF
 
             if [ "$VAL" = "-1" ] || [ -z "$VAL" ]; then
                 log_error "Facility '$FACTORY' not found or calculation failed (${DURATION}ms)"
-                # Add only result in facility;value format to leaks.dat and cache
                 echo "$FACTORY;-1" >> "$LEAK_FILE"
                 echo "$FACTORY;-1" >> "$CACHE_FILE"
             else
                 log_success "Calculation completed in ${DURATION}ms"
-                # Add only result in facility;value format to leaks.dat and cache
                 echo "$FACTORY;$VAL" >> "$LEAK_FILE"
                 echo "$FACTORY;$VAL" >> "$CACHE_FILE"
                 echo -e "${BOLD}Leak volume for $FACTORY:${RESET} ${BLUE}${VAL} M.m3${RESET}"
+                
+                # Display critical section information if available
                 if [ -f "$TEMP_ERR_FILE" ]; then
                     if grep -q "BONUS INFO" "$TEMP_ERR_FILE"; then
                          echo -e "\n${YELLOW}=== DETECTION TRONCON CRITIQUE ===${RESET}"
-                         # On extrait les lignes entre les bornes du bonus
                          sed -n '/=== BONUS INFO ===/,/=================/p' "$TEMP_ERR_FILE" | sed '1d;$d'
                          echo -e "${YELLOW}==================================${RESET}"
                     fi
@@ -528,7 +502,7 @@ EOF
                 process_factory "$FAC"
             done
 
-            # Display summary
+            # Display summary of all processed facilities
             echo -e "\n${BOLD}Leak volume summary:${RESET}"
             TOTAL_LEAKS=0
             for FAC in "${FACTORIES[@]}"; do
@@ -554,14 +528,12 @@ EOF
 
         # Optimize leak file (remove duplicates)
         if [ -f "$LEAK_FILE" ]; then
-            # Use sort -u to remove duplicates in one pass
             sort -u -t';' -k1,1 "$LEAK_FILE" > "${LEAK_FILE}.tmp"
             mv "${LEAK_FILE}.tmp" "$LEAK_FILE"
 
-            # Verify file only contains lines in facility;value format
+            # Verify file format integrity
             if grep -v "^[^;]*;[^;]*$" "$LEAK_FILE" > /dev/null; then
                 log_error "leaks.dat contains lines with incorrect format."
-                # Filter to keep only valid lines
                 grep "^[^;]*;[^;]*$" "$LEAK_FILE" > "${LEAK_FILE}.clean"
                 mv "${LEAK_FILE}.clean" "$LEAK_FILE"
             fi
