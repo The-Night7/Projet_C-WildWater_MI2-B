@@ -213,181 +213,171 @@ case "$COMMAND" in
 
         log_success "Data generated and sorted successfully"
 
-        # --- BRANCH: "ALL" BONUS MODE or STANDARD MODES ---
+# --- BRANCH: "ALL" BONUS MODE or STANDARD MODES ---
         if [ "$PARAM" = "all" ]; then
             # ---------------------------------------------------------
-            # BONUS 1: Combined histogram (Capacity / Source / Real)
+            # BONUS 1: Combined Histogram (Capacity / Source / Real)
             # ---------------------------------------------------------
-            IMG_ALL="$GRAPH_DIR/vol_all.png"
-            GP_DATA="$DATA_DIR/data_all.dat"
+            
+            # Temporary files
+            TMP_MAX="$DATA_DIR/.tmp_max"
+            TMP_SRC="$DATA_DIR/.tmp_src"
+            TMP_REAL="$DATA_DIR/.tmp_real"
+            TMP_MERGED="$DATA_DIR/.tmp_merged"
+            TMP_SORTED="$DATA_DIR/.tmp_sorted"
 
-            echo -e "${YELLOW}Creating combined histogram...${RESET}"
+            echo -e "${YELLOW}Generating combined data...${RESET}"
 
-            # Keep top 50 stations (end of sorted file)
-            # Check CSV format to ensure it contains 4 columns
-            if [ $(head -n1 "$OUT_CSV" | grep -o ";" | wc -l) -eq 3 ]; then
-                # Correct format: Name;Capacity;Source;Real
-                tail -n 50 "$OUT_CSV" > "$GP_DATA"
-            else
-                # Format is not as expected, verify C program output
-                log_error "Incorrect CSV format. Checking structure..."
-                # Show first lines for diagnostics
-                head -n 3 "$OUT_CSV" >> "$LOG_FILE"
+            # 1. Generate the 3 files separately
+            "$EXEC_MAIN" "$DATAFILE" "max"  > "$TMP_MAX"
+            "$EXEC_MAIN" "$DATAFILE" "src"  > "$TMP_SRC"
+            "$EXEC_MAIN" "$DATAFILE" "real" > "$TMP_REAL"
 
-                # Attempt correction - Assume C program generates incomplete data
-                # Create temporary file with expected structure
-                echo "# Creating test data file for 'all' mode" >> "$LOG_FILE"
-
-                # Run commands separately to get max, src and real
-                # then combine results
-                TMP_MAX="$DATA_DIR/.cache/.temp_max.csv"
-                TMP_SRC="$DATA_DIR/.cache/.temp_src.csv"
-                TMP_REAL="$DATA_DIR/.cache/.temp_real.csv"
-
-                echo -e "${YELLOW}Retrieving max, src and real data separately...${RESET}"
-
-                "$EXEC_MAIN" "$DATAFILE" "max" > "$TMP_MAX"
-                "$EXEC_MAIN" "$DATAFILE" "src" > "$TMP_SRC"
-                "$EXEC_MAIN" "$DATAFILE" "real" > "$TMP_REAL"
-
-                # Combine data - Use awk to join files
-                awk -F';' '
-                    BEGIN { OFS=";" }
-                    FILENAME == ARGV[1] { max[$1] = $2; next }
-                    FILENAME == ARGV[2] { src[$1] = $2; next }
-                    FILENAME == ARGV[3] {
-                        if ($1 in max && $1 in src) {
-                            print $1, max[$1], src[$1], $2
-                        }
+            # 2. Merge into: ID;Max;Source;Real
+            # Use awk to join files on ID. Missing values default to 0.
+            awk -F';' '
+                FNR==1 { file_idx++ }
+                file_idx==1 { max[$1] = $2; next }
+                file_idx==2 { src[$1] = $2; next }
+                file_idx==3 { real[$1] = $2; next }
+                END {
+                    OFS=";"
+                    for (id in max) {
+                        m = max[id] + 0
+                        s = (id in src) ? src[id] + 0 : 0
+                        r = (id in real) ? real[id] + 0 : 0
+                        if (m > 0) print id, m, s, r
                     }
-                ' "$TMP_MAX" "$TMP_SRC" "$TMP_REAL" | sort -t';' -k2,2gr | head -n 50 > "$GP_DATA"
+                }
+            ' "$TMP_MAX" "$TMP_SRC" "$TMP_REAL" > "$TMP_MERGED"
 
-                # Clean up temporary files
-                rm -f "$TMP_MAX" "$TMP_SRC" "$TMP_REAL"
+            # 3. ASCENDING SORT (Small -> Big) on capacity (column 2)
+            # This ensures consistency with standard modes (Left to Right display)
+            sort -t';' -k2,2g "$TMP_MERGED" > "$TMP_SORTED"
 
-                # Verify generated file contains data
-                if [ ! -s "$GP_DATA" ]; then
-                    log_error "Unable to generate valid data for combined histogram."
-                    exit 1
-                fi
+            # Cleanup intermediate files
+            rm -f "$TMP_MAX" "$TMP_SRC" "$TMP_REAL" "$TMP_MERGED"
 
-                log_success "Combined data generated successfully"
-            fi
-
-            # Verify data file is properly formatted for gnuplot
-            echo -e "${YELLOW}Checking data format...${RESET}"
-            if [ $(head -n1 "$GP_DATA" | awk -F';' '{print NF}') -ne 4 ]; then
-                log_error "Data file has incorrect format (4 columns expected)."
-                # Show sample data for diagnostics
-                head -n 3 "$GP_DATA" >> "$LOG_FILE"
+            if [ ! -s "$TMP_SORTED" ]; then
+                log_error "Error generating combined data."
                 exit 1
             fi
 
+            # =========================================================
+            # GRAPH 1: TOP 10 (BIGGEST)
+            # =========================================================
+            # We take the END of the sorted file (tail)
+            IMG_BIG="$GRAPH_DIR/vol_all_big.png"
+            GP_DATA_BIG="$DATA_DIR/data_all_big.dat"
+            
+            tail -n 10 "$TMP_SORTED" > "$GP_DATA_BIG"
+
+            echo -e "${YELLOW}Generating Top 10 graph (Stacked)...${RESET}"
+
             gnuplot -persist <<EOF
-set terminal png size 1600,900
-set output '$IMG_ALL'
-set title "Stacked Histogram (Capacity vs Losses vs Real)"
+set terminal png size 1200,800
+set output '$IMG_BIG'
+set title "Top 10 Stations - Bonus Mode (Smallest to Largest)"
 set style data histograms
 set style histogram rowstacked
 set style fill solid 1.0 border -1
 set datafile separator ';'
 set ylabel 'Volume (M.m3)'
-set xtics rotate by -45 font ',8'
+set xtics rotate by -45 font ',10'
 set key outside top center horizontal
 set grid y
-# CSV columns: 1:Name, 2:Capacity, 3:Source, 4:Real
-# Stacking (Bottom -> Top):
-# 1. Blue: Real (col 4)
-# 2. Red: Loss (Source - Real) -> (\$3-\$4)
-# 3. Green: Remaining Capacity (Max - Source) -> (\$2-\$3)
-plot '$GP_DATA' using 4:xtic(1) title 'Real (Output)' lc rgb '#3366CC', \
-'' using (\$3-\$4) title 'Losses (Transport)' lc rgb '#DC3912', \
-'' using (\$2-\$3) title 'Unused Capacity' lc rgb '#109618'
+set boxwidth 0.7 relative
+
+# Stacking: Blue (Bottom) -> Red (Middle) -> Green (Top)
+# Using ternary operators to handle potential negative values if data is inconsistent
+plot '$GP_DATA_BIG' using 4:xtic(1) title 'Real Output' lc rgb '#3366CC', \
+     '' using (\$3-\$4 < 0 ? 0 : \$3-\$4) title 'Losses' lc rgb '#DC3912', \
+     '' using (\$2-\$3 < 0 ? 0 : \$2-\$3) title 'Unused Capacity' lc rgb '#109618'
 EOF
-
-            # Verify graph was generated
-            if [ -f "$IMG_ALL" ] && [ -s "$IMG_ALL" ]; then
-                log_success "Combined graph generated: ${BOLD}$IMG_ALL${RESET}"
-            else
-                log_error "Failed to generate combined graph."
-                # Try with simpler approach
-                echo -e "${YELLOW}Attempting alternative approach...${RESET}"
-
-                # Create temporary gnuplot script with more debug info
-                GNUPLOT_SCRIPT="$DATA_DIR/.gnuplot_script.txt"
-                cat > "$GNUPLOT_SCRIPT" <<EOF
-set terminal png size 1600,900
-set output '$IMG_ALL'
-set title "Stacked Histogram (Capacity vs Losses vs Real)"
-set style data histograms
-set style histogram rowstacked
-set style fill solid 1.0 border -1
-set datafile separator ';'
-set ylabel 'Volume (M.m3)'
-set xtics rotate by -45 font ',8'
-set key outside top center horizontal
-set grid y
-# Debug - Show data
-print "Reading file: $GP_DATA"
-stats '$GP_DATA' using 2 nooutput
-print "Valid lines for column 2: ", STATS_records
-stats '$GP_DATA' using 3 nooutput
-print "Valid lines for column 3: ", STATS_records
-stats '$GP_DATA' using 4 nooutput
-print "Valid lines for column 4: ", STATS_records
-# Simplify plot to avoid errors
-plot '$GP_DATA' using 2:xtic(1) title 'Capacity' lc rgb '#109618', \
-     '$GP_DATA' using 3 title 'Source' lc rgb '#DC3912', \
-     '$GP_DATA' using 4 title 'Real' lc rgb '#3366CC'
-EOF
-
-                # Execute gnuplot with debug script
-                gnuplot "$GNUPLOT_SCRIPT" 2>> "$LOG_FILE"
-
-                if [ -f "$IMG_ALL" ] && [ -s "$IMG_ALL" ]; then
-                    log_success "Alternative graph generated: ${BOLD}$IMG_ALL${RESET}"
-                else
-                    log_error "Failed to generate alternative graph."
-                fi
-
-                rm -f "$GNUPLOT_SCRIPT"
+            if [ -f "$IMG_BIG" ]; then
+                log_success "Top 10 Graph generated: ${BOLD}$IMG_BIG${RESET}"
             fi
 
-            rm -f "$GP_DATA"
+            # =========================================================
+            # GRAPH 2: BOTTOM 50 (SMALLEST)
+            # =========================================================
+            # We take the START of the sorted file (head)
+            IMG_SMALL="$GRAPH_DIR/vol_all_small.png"
+            GP_DATA_SMALL="$DATA_DIR/data_all_small.dat"
+            
+            head -n 50 "$TMP_SORTED" > "$GP_DATA_SMALL"
+
+            echo -e "${YELLOW}Generating Bottom 50 graph (Stacked)...${RESET}"
+
+            gnuplot -persist <<EOF
+set terminal png size 1600,900
+set output '$IMG_SMALL'
+set title "Bottom 50 Stations - Bonus Mode (Smallest to Largest)"
+set style data histograms
+set style histogram rowstacked
+set style fill solid 1.0 border -1
+set datafile separator ';'
+set ylabel 'Volume (M.m3)'
+set xtics rotate by -90 font ',8'
+set key outside top center horizontal
+set grid y
+set boxwidth 0.8 relative
+
+# Same stacking logic
+plot '$GP_DATA_SMALL' using 4:xtic(1) title 'Real Output' lc rgb '#3366CC', \
+     '' using (\$3-\$4 < 0 ? 0 : \$3-\$4) title 'Losses' lc rgb '#DC3912', \
+     '' using (\$2-\$3 < 0 ? 0 : \$2-\$3) title 'Unused Capacity' lc rgb '#109618'
+EOF
+            if [ -f "$IMG_SMALL" ]; then
+                log_success "Bottom 50 Graph generated: ${BOLD}$IMG_SMALL${RESET}"
+            fi
+
+            # Final cleanup
+            rm -f "$TMP_SORTED" "$GP_DATA_BIG" "$GP_DATA_SMALL"
+
         else
             # ---------------------------------------------------------
             # STANDARD MODES (max, src, real)
             # ---------------------------------------------------------
             echo -e "${YELLOW}Creating histograms...${RESET}"
+            
+            # Ensure the file is sorted in ASCENDING order (Small -> Big)
+            # -k2,2g = numeric sort on column 2
+            SORTED_STD="$DATA_DIR/.sorted_std_asc"
+            sort -t';' -k2,2g "$OUT_CSV" > "$SORTED_STD"
 
             # 1. Top 10 (Largest)
+            # Since file is sorted Small -> Big, Top 10 are at the END (tail)
             GP_BIG="$DATA_DIR/data_big.dat"
-            tail -n 10 "$OUT_CSV" > "$GP_BIG"
+            tail -n 10 "$SORTED_STD" > "$GP_BIG"
             IMG_BIG="$GRAPH_DIR/vol_${PARAM}_big.png"
 
             gnuplot -persist <<EOF
 set terminal png size 1200,800
 set output '$IMG_BIG'
-set title "Top 10 Stations ($PARAM) - M.m3"
+set title "Top 10 Stations ($PARAM) - Smallest to Largest"
 set yrange [0:*]
 set style data histograms
 set style fill solid 1.0 border -1
 set datafile separator ';'
-set ylabel 'M.m3'
+set ylabel 'Volume (M.m3)'
 set xtics rotate by -45
+set grid y
+# Gnuplot preserves file order (Left=Top of file, Right=Bottom of file)
 plot '$GP_BIG' using 2:xtic(1) title 'Volume' lc rgb 'blue'
 EOF
             log_success "Top 10 image generated: ${BOLD}$IMG_BIG${RESET}"
 
             # 2. Bottom 50 (Smallest)
+            # Since file is sorted Small -> Big, Bottom 50 are at the START (head)
             GP_SMALL="$DATA_DIR/data_small.dat"
-            head -n 50 "$OUT_CSV" > "$GP_SMALL"
+            head -n 50 "$SORTED_STD" > "$GP_SMALL"
             IMG_SMALL="$GRAPH_DIR/vol_${PARAM}_small.png"
 
             gnuplot -persist <<EOF
 set terminal png size 1600,900
 set output '$IMG_SMALL'
-set title "Bottom 50 Stations ($PARAM) - M.m3"
+set title "Bottom 50 Stations ($PARAM) - Smallest to Largest"
 set key outside top center horizontal
 set style data histograms
 set boxwidth 0.8 relative
@@ -397,12 +387,13 @@ set ylabel 'Volume (M.m3)'
 set format y "%.4f"
 set yrange [*:*]
 set xtics rotate by -90 font ',8'
+set grid y
 plot '$GP_SMALL' using 2:xtic(1) title 'Volume' lc rgb 'red'
 EOF
             log_success "Bottom 50 image generated: ${BOLD}$IMG_SMALL${RESET}"
 
             # Clean up temporary files
-            rm -f "$GP_BIG" "$GP_SMALL"
+            rm -f "$GP_BIG" "$GP_SMALL" "$SORTED_STD"
         fi
         ;;
 
@@ -515,6 +506,14 @@ EOF
                 echo "$FACTORY;$VAL" >> "$LEAK_FILE"
                 echo "$FACTORY;$VAL" >> "$CACHE_FILE"
                 echo -e "${BOLD}Leak volume for $FACTORY:${RESET} ${BLUE}${VAL} M.m3${RESET}"
+                if [ -f "$TEMP_ERR_FILE" ]; then
+                    if grep -q "BONUS INFO" "$TEMP_ERR_FILE"; then
+                         echo -e "\n${YELLOW}=== DETECTION TRONCON CRITIQUE ===${RESET}"
+                         # On extrait les lignes entre les bornes du bonus
+                         sed -n '/=== BONUS INFO ===/,/=================/p' "$TEMP_ERR_FILE" | sed '1d;$d'
+                         echo -e "${YELLOW}==================================${RESET}"
+                    fi
+                fi
             fi
 
             # Cleanup
