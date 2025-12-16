@@ -161,3 +161,17 @@ sudo apt install build-essential gnuplot make
 ./scripts/myScript.sh leaks "Facility complex #RH400057F"
 ```
 >>>>>>> origin/main
+
+
+if grep -q "BONUS INFO" "$TEMP_ERR_FILE"; then
+                         echo -e "\n${YELLOW}=== DETECTION TRONCON CRITIQUE ===${RESET}"
+                         # On extrait les lignes entre les bornes du bonus
+                         sed -n '/=== BONUS INFO ===/,/=================/p' "$TEMP_ERR_FILE" | sed '1d;$d'
+                         echo -e "${YELLOW}==================================${RESET}"
+                    fi
+                fi
+
+
+
+
+
