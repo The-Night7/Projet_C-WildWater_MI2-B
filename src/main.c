@@ -273,37 +273,28 @@ static double calculate_leaks_mt(Station* node, double volume, Station* facility
     // Sum up results
     double downstream_leaks = 0.0;
     
-    Node* current = results.head->next;  // Skip head node (empty)
+    Node* current = results.head;
     while (current) {
         LeakTaskData* data = (LeakTaskData*)current->content;
         if (data) {
-            // Add branch result to total
             downstream_leaks += *(data->leak_result);
             
-            // Update global max leak if needed
             if (*(data->max_leak_val) > global_max_leak) {
                 global_max_leak = *(data->max_leak_val);
                 global_max_from = *(data->max_from);
                 global_max_to = *(data->max_to);
             }
             
-            // Free allocated memory
             free(data->leak_result);
             free(data->max_leak_val);
             free(data->max_from);
             free(data->max_to);
             free(data);
         }
-        
-        Node* tmp = current;
         current = current->next;
-        free(tmp);
     }
+    cleanupNodeGroup(&results);   // libère les Node
 
-    if (results.head) {
-        results.head->next = NULL;
-    }
-    
     // Display critical section info
     if (global_max_leak > 0.0) {
         fprintf(stderr, "\n=== BONUS INFO ===\n");
@@ -315,7 +306,6 @@ static double calculate_leaks_mt(Station* node, double volume, Station* facility
     }
     
     // Clean up resources
-    cleanupNodeGroup(&results);
     cleanupThreads(thread_system);
     
     return total_pipe_loss + downstream_leaks;

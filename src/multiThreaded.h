@@ -1,13 +1,8 @@
 #ifndef MULTITHREADED_H
 #define MULTITHREADED_H
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdbool.h>
 #include <pthread.h>
-#include <unistd.h>
 #include <time.h>
-
 /**
  * Number of threads to use for parallel processing
  */
@@ -35,7 +30,7 @@ typedef struct node {
  * Group of nodes forming a linked list
  */
 typedef struct {
-    Node* head;
+    Node* head;              // NULL = vide
     pthread_mutex_t mutex;
 } NodeGroup;
 
@@ -106,7 +101,7 @@ int handleThreads(Threads* t);
  * Create and initialize a thread system
  * @return Pointer to initialized thread system, NULL on failure
  */
-Threads* setupThreads();
+Threads* setupThreads(void);
 
 /**
  * Clean up thread system and free resources
