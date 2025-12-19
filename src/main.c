@@ -16,6 +16,7 @@
 #include <time.h>
 #include "avl.h"
 #include "multiThreaded.h"
+#include "structs.h"
 
 /**
  * Removes whitespace at the beginning and end of string
@@ -205,44 +206,56 @@ static double calculate_leaks_mt(Station* node, double volume, Station* facility
     
     // Setup thread system for parallel processing
     Threads* thread_system = setupThreads();
-    
+    if (!thread_system) {
+        double max_leak_val = 0.0;
+        char* max_from = NULL;
+        char* max_to = NULL;
+        return solve_leaks(node, volume, facility, &max_leak_val, &max_from, &max_to);
+    }
+
     // Create a NodeGroup to store results
     NodeGroup results;
-    initNodeGroup(&results);
-    
+    if (initNodeGroup(&results) != 0) {
+    cleanupThreads(thread_system);
+        double max_leak_val = 0.0;
+        char* max_from = NULL;
+        char* max_to = NULL;
+        return solve_leaks(node, volume, facility, &max_leak_val, &max_from, &max_to);
+}
+
     // Prepare tasks for each branch
     double total_pipe_loss = 0.0;
     double global_max_leak = 0.0;
     char* global_max_from = NULL;
     char* global_max_to = NULL;
-    
+
     for (int i = 0; i < count; i++) {
         // Skip branches with negligible volume
         if (volumes_arrived[i] <= 0.001) {
             total_pipe_loss += pipe_losses[i];
             continue;
         }
-        
+
         // Track maximum pipe loss
         if (pipe_losses[i] > global_max_leak) {
             global_max_leak = pipe_losses[i];
             global_max_from = node->name;
             global_max_to = valid_connections[i]->target->name;
         }
-        
+
         total_pipe_loss += pipe_losses[i];
-        
+
         // Create task for downstream calculation
         double* branch_result = malloc(sizeof(double));
         double* max_leak_val = malloc(sizeof(double));
         char** max_from = malloc(sizeof(char*));
         char** max_to = malloc(sizeof(char*));
-        
+
         *branch_result = 0.0;
         *max_leak_val = 0.0;
         *max_from = NULL;
         *max_to = NULL;
-        
+
         // Create task data
         LeakTaskData* task_data = malloc(sizeof(LeakTaskData));
         task_data->node = valid_connections[i]->target;
@@ -252,39 +265,42 @@ static double calculate_leaks_mt(Station* node, double volume, Station* facility
         task_data->max_leak_val = max_leak_val;
         task_data->max_from = max_from;
         task_data->max_to = max_to;
-        
+
         // Add result to results list
         addContent(&results, task_data);
-        
+
         // Schedule task
         addTaskInThreads(thread_system, leak_branch_task_wrapper, task_data);
     }
-    
+
     // Free pre-allocated arrays
     free(valid_connections);
     free(pipe_losses);
     free(volumes_arrived);
-    
+
     // Execute all tasks in parallel
     thread_start = clock();
-    handleThreads(thread_system);
+    int th_err = handleThreads(thread_system);
+    if (th_err != 0) {
+        fprintf(stderr, "Warning: %d thread operations failed\n", th_err);
+    }
     thread_stop = clock();
-    
+
     // Sum up results
     double downstream_leaks = 0.0;
-    
+
     Node* current = results.head;
     while (current) {
         LeakTaskData* data = (LeakTaskData*)current->content;
         if (data) {
             downstream_leaks += *(data->leak_result);
-            
+
             if (*(data->max_leak_val) > global_max_leak) {
                 global_max_leak = *(data->max_leak_val);
                 global_max_from = *(data->max_from);
                 global_max_to = *(data->max_to);
             }
-            
+
             free(data->leak_result);
             free(data->max_leak_val);
             free(data->max_from);
@@ -293,7 +309,10 @@ static double calculate_leaks_mt(Station* node, double volume, Station* facility
         }
         current = current->next;
     }
-    cleanupNodeGroup(&results);   // libère les Node
+
+    // Ici on ne free PAS les Node à la main : cleanupNodeGroup le fait
+    cleanupNodeGroup(&results);
+    cleanupThreads(thread_system);
 
     // Display critical section info
     if (global_max_leak > 0.0) {
@@ -303,11 +322,8 @@ static double calculate_leaks_mt(Station* node, double volume, Station* facility
         fprintf(stderr, "Downstream: %s\n", global_max_to);
         fprintf(stderr, "Loss: %.6f M.m3\n", global_max_leak / 1000.0);
         fprintf(stderr, "=================\n");
-    }
-    
-    // Clean up resources
-    cleanupThreads(thread_system);
-    
+}
+
     return total_pipe_loss + downstream_leaks;
 }
 

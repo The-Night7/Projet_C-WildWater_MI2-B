@@ -16,25 +16,27 @@ void* doallTasks(void* arg) {
     NodeGroup* schedule = (NodeGroup*)arg;
     if (!schedule) return NULL;
 
-    // Détache toute la liste sous mutex (safe et rapide)
+    // Détache toutes les tâches sous mutex (safe)
     pthread_mutex_lock(&schedule->mutex);
     Node* list = schedule->head;
     schedule->head = NULL;
     pthread_mutex_unlock(&schedule->mutex);
 
-    // Traite hors mutex
+    // Exécute hors mutex
     Node* current = list;
     while (current) {
         Node* next = current->next;
+
         Task* tsk = (Task*)current->content;
         if (tsk && tsk->task) {
             tsk->task(tsk->data);
         }
-        free(tsk);
-        free(current);
 
+        free(tsk);      // alloué dans addTaskInThreads
+        free(current);  // node de la file
         current = next;
     }
+
     return NULL;
 }
 
@@ -50,26 +52,27 @@ int initNodeGroup(NodeGroup* ng) {
     if (pthread_mutex_init(&ng->mutex, NULL) != 0) return -1;
     return 0;
 }
+
 /**
  * Create and initialize a thread system
  *
  * @return Pointer to the new Threads system, or NULL on failure
  */
-Threads* setupThreads() {
-    Threads* t = malloc(sizeof(Threads));
-    if (!t) return NULL;
-    t->doall = doallTasks;
-    t->error_count = 0;
+Threads* setupThreads(void) {
+    Threads* newThreads = malloc(sizeof(Threads));
+    if (!newThreads) return NULL;
+    newThreads->doall = doallTasks;
+    newThreads->error_count = 0;
 
     for (int i = 0; i < maxthreads; i++) {
-        t->occupency[i] = 0;
-        if (initNodeGroup(&t->scheduledTasks[i]) != 0) {
-            for (int j = 0; j < i; j++) cleanupNodeGroup(&t->scheduledTasks[j]);
-            free(t);
+        newThreads->occupency[i] = 0;
+        if (initNodeGroup(&newThreads->scheduledTasks[i]) != 0) {
+            for (int j = 0; j < i; j++) cleanupNodeGroup(&newThreads->scheduledTasks[j]);
+            free(newThreads);
             return NULL;
         }
     }
-    return t;
+    return newThreads;
 }
 
 /**
@@ -84,8 +87,10 @@ int addTaskToGroup(NodeGroup* g, Task* task) {
 
     Node* n = malloc(sizeof(Node));
     if (!n) return -1;
+
     n->content = task;
 
+    // Push en tête : O(1)
     pthread_mutex_lock(&g->mutex);
     n->next = g->head;
     g->head = n;
@@ -121,6 +126,7 @@ int addTaskInThreads(Threads* t, void (*task)(void* param), void* data) {
         pthread_mutex_unlock(&global_mutex);
         return -1;
     }
+
     ntsk->task = task;
     ntsk->data = data;
 
@@ -143,15 +149,19 @@ int addTaskInThreads(Threads* t, void (*task)(void* param), void* data) {
  */
 int handleThreads(Threads* t) {
     if (!t) return -1;
+
     int err = 0;
 
     for (int i = 0; i < maxthreads; i++) {
-        if (pthread_create(&t->threads[i], NULL, t->doall, &t->scheduledTasks[i]) != 0)
+        if (pthread_create(&t->threads[i], NULL, t->doall, (void*)&t->scheduledTasks[i]) != 0) {
             err++;
+        }
     }
+
     for (int i = 0; i < maxthreads; i++) {
-        if (pthread_join(t->threads[i], NULL) != 0)
+        if (pthread_join(t->threads[i], NULL) != 0) {
             err++;
+        }
     }
 
     t->error_count = err;
@@ -170,6 +180,7 @@ int addContent(NodeGroup* ng, void* content) {
 
     Node* n = malloc(sizeof(Node));
     if (!n) return -1;
+
     n->content = content;
 
     pthread_mutex_lock(&ng->mutex);
@@ -188,11 +199,13 @@ int addContent(NodeGroup* ng, void* content) {
 void cleanupNodeGroup(NodeGroup* ng) {
     if (!ng) return;
 
+    // Détache la liste sous mutex
     pthread_mutex_lock(&ng->mutex);
     Node* current = ng->head;
     ng->head = NULL;
     pthread_mutex_unlock(&ng->mutex);
 
+    // Libère les nodes (pas le content : géré par l'appelant)
     while (current) {
         Node* next = current->next;
         free(current);
@@ -209,6 +222,8 @@ void cleanupNodeGroup(NodeGroup* ng) {
  */
 void cleanupThreads(Threads* t) {
     if (!t) return;
-    for (int i = 0; i < maxthreads; i++) cleanupNodeGroup(&t->scheduledTasks[i]);
+    for (int i = 0; i < maxthreads; i++) {
+        cleanupNodeGroup(&t->scheduledTasks[i]);
+    }
     free(t);
 }
