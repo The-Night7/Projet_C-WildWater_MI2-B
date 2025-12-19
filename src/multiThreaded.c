@@ -1,14 +1,14 @@
 #include "multiThreaded.h"
 #include <stdlib.h>
 
-// Global timing variables
+// Global timing variables for performance measurement
 clock_t thread_start, thread_stop;
 
-// Global mutex for protecting shared data
+// Global mutex for protecting shared data across threads
 pthread_mutex_t global_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /**
- * Thread function to process tasks
+ * Thread function that processes tasks from a node group
  * @param arg Pointer to node group containing tasks
  * @return NULL
  */
@@ -16,13 +16,13 @@ void* doallTasks(void* arg) {
     NodeGroup* schedule = (NodeGroup*)arg;
     if (!schedule) return NULL;
 
-    // Détache toutes les tâches sous mutex (safe)
+    // Safely detach all tasks under mutex protection
     pthread_mutex_lock(&schedule->mutex);
     Node* list = schedule->head;
     schedule->head = NULL;
     pthread_mutex_unlock(&schedule->mutex);
 
-    // Exécute hors mutex
+    // Execute tasks outside of mutex lock
     Node* current = list;
     while (current) {
         Node* next = current->next;
@@ -32,8 +32,8 @@ void* doallTasks(void* arg) {
             tsk->task(tsk->data);
         }
 
-        free(tsk);      // alloué dans addTaskInThreads
-        free(current);  // node de la file
+        free(tsk);      // Allocated in addTaskInThreads
+        free(current);  // Free the node from the queue
         current = next;
     }
 
@@ -90,7 +90,7 @@ int addTaskToGroup(NodeGroup* g, Task* task) {
 
     n->content = task;
 
-    // Push en tête : O(1)
+    // Push to head: O(1) operation
     pthread_mutex_lock(&g->mutex);
     n->next = g->head;
     g->head = n;
@@ -103,7 +103,7 @@ int addTaskToGroup(NodeGroup* g, Task* task) {
  * Add a task to the least loaded thread
  *
  * @param t Pointer to the Threads system
- * @param task Function to execute in the worker
+ * @param task Function to execute in the worker thread
  * @param data Data to pass to the function
  * @return 0 on success, -1 on failure
  */
@@ -112,6 +112,7 @@ int addTaskInThreads(Threads* t, void (*task)(void* param), void* data) {
 
     pthread_mutex_lock(&global_mutex);
 
+    // Find the thread with the least number of tasks
     int slot = 0;
     int min = t->occupency[0];
     for (int i = 1; i < maxthreads; i++) {
@@ -152,12 +153,14 @@ int handleThreads(Threads* t) {
 
     int err = 0;
 
+    // Create threads and assign task groups to them
     for (int i = 0; i < maxthreads; i++) {
         if (pthread_create(&t->threads[i], NULL, t->doall, (void*)&t->scheduledTasks[i]) != 0) {
             err++;
         }
     }
 
+    // Wait for all threads to complete
     for (int i = 0; i < maxthreads; i++) {
         if (pthread_join(t->threads[i], NULL) != 0) {
             err++;
@@ -193,19 +196,20 @@ int addContent(NodeGroup* ng, void* content) {
 
 /**
  * Clean up a node group
+ * Note: This frees the nodes but not their content (caller is responsible for content)
  *
  * @param ng Pointer to the NodeGroup to clean up
  */
 void cleanupNodeGroup(NodeGroup* ng) {
     if (!ng) return;
 
-    // Détache la liste sous mutex
+    // Detach the list under mutex protection
     pthread_mutex_lock(&ng->mutex);
     Node* current = ng->head;
     ng->head = NULL;
     pthread_mutex_unlock(&ng->mutex);
 
-    // Libère les nodes (pas le content : géré par l'appelant)
+    // Free the nodes (but not their content - caller handles that)
     while (current) {
         Node* next = current->next;
         free(current);

@@ -1,12 +1,11 @@
 /*
- * main.c - Optimized version with multithreaded leak calculation
+ * main.c - Multithreaded water network analysis program
  *
- * Analysis program for the C-WildWater drinking water network.
- * Features:
- * - Histogram generation (capacities, captured volumes, actual volumes)
- * - Calculation of losses downstream from a specific facility
- * - Detection of critical section (worst absolute leak)
- * - Multithreaded processing for improved performance
+ * Analysis program for water distribution networks that features:
+ * - Histogram generation for capacities and water volumes
+ * - Calculation of water losses downstream from specific facilities
+ * - Detection of critical sections with highest leakage
+ * - Multithreaded processing for performance optimization
  */
 
 #include <stdio.h>
@@ -216,12 +215,12 @@ static double calculate_leaks_mt(Station* node, double volume, Station* facility
     // Create a NodeGroup to store results
     NodeGroup results;
     if (initNodeGroup(&results) != 0) {
-    cleanupThreads(thread_system);
+        cleanupThreads(thread_system);
         double max_leak_val = 0.0;
         char* max_from = NULL;
         char* max_to = NULL;
         return solve_leaks(node, volume, facility, &max_leak_val, &max_from, &max_to);
-}
+    }
 
     // Prepare tasks for each branch
     double total_pipe_loss = 0.0;
@@ -310,7 +309,7 @@ static double calculate_leaks_mt(Station* node, double volume, Station* facility
         current = current->next;
     }
 
-    // Ici on ne free PAS les Node à la main : cleanupNodeGroup le fait
+    // NodeGroup cleanup is handled by cleanupNodeGroup
     cleanupNodeGroup(&results);
     cleanupThreads(thread_system);
 
@@ -322,7 +321,7 @@ static double calculate_leaks_mt(Station* node, double volume, Station* facility
         fprintf(stderr, "Downstream: %s\n", global_max_to);
         fprintf(stderr, "Loss: %.6f M.m3\n", global_max_leak / 1000.0);
         fprintf(stderr, "=================\n");
-}
+    }
 
     return total_pipe_loss + downstream_leaks;
 }
