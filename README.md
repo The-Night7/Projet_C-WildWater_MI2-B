@@ -1,62 +1,102 @@
 # 🌊 C-WildWater: Hydraulic Network Analysis
 
-> **Massive Data Processing & C Algorithms**
+> **Pre-Ing 2 Project (2025-2026)**
+> *Big Data Processing, AVL Structures, C Optimization & Gnuplot Visualization.*
 
-![Language](https://img.shields.io/badge/Language-C-blue) ![Script](https://img.shields.io/badge/Script-Bash-green) ![Build](https://img.shields.io/badge/Build-Make-orange)
+---
 
-## 📖 Project Overview
+## 📖 About the Project
 
-**C-WildWater** is a high-performance application designed to analyze a drinking water distribution network that simulates **1/3 of the French network**.
+Welcome to **C-WildWater**. This project was born from a technical challenge: to design a software pipeline capable of analyzing a massive CSV file describing the entire water distribution network in France.
 
-The project processes a massive data file (several million lines, >500MB), combining **Shell** flexibility and **C** performance to:
-1. Ingest and structure data (Graphs & AVL Trees)
-2. Generate statistics on treatment plants
-3. Detect leaks and calculate network losses
-4. Visualize results through dynamic graphs
+The goal was not just to read data, but to understand it: detecting stations operating beyond capacity, isolating sources, and above all, spotting potential leaks in the network. To achieve this, we combined the power of **C** (for performance and memory management), the flexibility of **Shell** (for automation), and the precision of **Gnuplot** (for visualization).
 
-## 🚀 Key Features
+## 🚀 Features
 
-### 📊 1. Volume Analysis (Histo Mode)
-Generates CSV files and graphs via **Gnuplot** to visualize:
-* **Capacity:** Maximum volume plants can process
-* **Source:** Water volume drawn from sources
-* **Actual:** Final distributed volume (after leaks)
-* **All:** Combined histogram showing all three states simultaneously
+The program processes data to produce analyses in the form of charts and reports:
 
-### 💧 2. Leak Calculation (Leaks Mode)
-Optimized graph traversal algorithm (DFS) to calculate total water volume lost downstream from a specific plant:
-* Optimized processing time (milliseconds)
-* Accounts for leak percentages at each section
-* Automatically identifies critical section (worst leak in absolute value)
+*   **📊 Histo Mode (Statistics):**
+    *   **Station:** Ranking stations by capacity and flow.
+    *   **Consumption:** Station analysis (Capacity vs. Actual Load).
+    *   **Sources:** Identification and analysis of network origin points.
+*   **💧 Leaks Mode:**
+    *   Detection of sections where outgoing water quantity is less than incoming quantity.
+    *   Identification of "Worst Sections".
+*   **🌟 Bonus Mode (Advanced Analysis):**
+    *   Stacked Charts visualization showing the exact breakdown: *Real Volume* vs. *Losses* vs. *Unused Capacity*.
 
-## 🛠️ Setup & Requirements
+## 🛠️ Installation and Usage
 
-This project is designed for **Linux** environments (or WSL).
+### Prerequisites
 
-### Clone the project
-```bash
-git clone https://github.com/The-Night7/Projet_C-WildWater_MI2-B.git
-cd Projet_C-WildWater_MI2-B
-```
+To compile and run the project, you need **GCC**, **Make**, and **Gnuplot**. Here is how to install them depending on your system:
 
-**Dependencies:**
+**🐧 Linux (Ubuntu / Debian / WSL)**
 ```bash
 sudo apt update
-sudo apt install build-essential gnuplot make
-sudo apt install dos2unix
+sudo apt install build-essential gnuplot
 ```
 
-## Usage:
+**🍎 macOS (via Homebrew)**
 ```bash
-dos2unix scripts/myScript.sh
-chmod +x scripts/myScript.sh
-./scripts/myScript.sh histo max    # Maximum capacity
-./scripts/myScript.sh histo src    # Source volume
-./scripts/myScript.sh histo real   # Actual processed volume
-./scripts/myScript.sh histo all    # Combined graph of all three modes
+brew install gcc make gnuplot
 ```
 
-**Leaks example:**
+**🎩 Fedora / RHEL**
 ```bash
-./scripts/myScript.sh leaks "Facility complex #RH400057F"
+sudo dnf install gcc make gnuplot
 ```
+
+### Quick Start
+
+Everything is controlled by our master script `myScript.sh`. It handles compilation, cleanup, and execution.
+
+1.  **Grant execution rights:**
+    ```bash
+    chmod +x myScript.sh
+    ```
+
+2.  **Launch analysis (Help):**
+    ```bash
+    ./myScript.sh help
+    ```
+
+3.  **Command Examples:**
+    *   *Generate histograms:*
+        ```bash
+        ./myScript.sh histo all/src/real/max
+        ```
+    *   *Detect leaks:*
+        ```bash
+        ./myScript.sh leaks "Facility complex #ID"
+        ```
+
+The generated charts (`.png` files) will be saved in the root folder or a dedicated folder (`images/`) depending on the script configuration.
+
+## ⚙️ Technical Choices
+
+To ensure execution speed on millions of lines:
+
+*   **AVL Trees:** We use balanced binary search trees to store and retrieve stations instantly (O(log n) complexity), avoiding the slowness of a classic linked list.
+*   **Multi-threading:** Use of `pthread` and `mutex` to parallelize certain file writes and optimize processing times (IO-bound).
+*   **Robust Parsing:** Native handling of CSV irregularities (spaces, variable formats).
+
+## 👥 The Team
+
+This project is the result of close collaboration where each member brought their expertise:
+
+*   **Myriam Bensaid** 🏗️
+    *   *Architecture & Optimization:* She structured the C code, developed critical utility functions, and managed the Git flow (merges) between branches. She also led the integration of multi-threading and terminal display.
+
+*   **Sheryne Ouarghi** 📈
+    *   *Visualization & Data:* She mastered Gnuplot to transform our raw data into readable charts. She ensured visual results were relevant and professionally formatted.
+
+*   **Matthieu Vannereau** 🧠
+    *   *Business Logic & Algorithms:* He designed the algorithms for leak detection and "worst section" calculation. He also prepared the data logic necessary for the bonus (stacked histograms) mode.
+
+## 👏 Credits
+
+*   **Multi-threading Inspiration:** Thanks to [Tiago Charette](https://github.com/TogExe/MultiThreaded) whose work inspired our implementation of mutex-secured parallelization.
+
+---
+*C-WildWater Project - 2025*
