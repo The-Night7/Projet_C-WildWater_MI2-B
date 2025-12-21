@@ -68,7 +68,7 @@ Everything is controlled by our master script `myScript.sh`. It handles compilat
         ```
     *   *Detect leaks:*
         ```bash
-        ./myScript.sh leaks "Factory complex #ID"
+        ./myScript.sh leaks "FACILITY_TYPE #ID"
         ```
 
 The generated charts (`.png` files) will be saved in the dedicated folder (`data/output_images/`).
