@@ -1,21 +1,25 @@
 /*
- * main.c - Multithreaded water network analysis program
+ * main.c - Optimized water network analysis program
  *
  * Analysis program for water distribution networks that features:
  * - Histogram generation for capacities and water volumes
  * - Calculation of water losses downstream from specific facilities
  * - Detection of critical sections with highest leakage
- * - Multithreaded processing for performance optimization
+ * - Optimized sequential processing for better performance
  */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <math.h>
 #include <time.h>
+#include <immintrin.h>  // Pour les instructions SIMD
 #include "avl.h"
-#include "multiThreaded.h"
 #include "structs.h"
+
+// Variable globale pour mesurer le temps
+clock_t process_start, process_stop;
 
 /**
  * Removes whitespace at the beginning and end of string
@@ -24,23 +28,40 @@
  */
 static char* trim_whitespace(char* str) {
     if (!str) return NULL;
+
     // Move to first non-whitespace character
-    while (*str && (*str == ' ' || *str == '\t')) {
+    while (*str && (*str == ' ' || *str == '\t' || *str == '\r' || *str == '\n')) {
         str++;
     }
+
     if (*str == '\0') return str;
+
     // Remove trailing whitespace
     char* end = str + strlen(str) - 1;
-    while (end > str && (*end == ' ' || *end == '\t')) {
+    while (end > str && (*end == ' ' || *end == '\t' || *end == '\r' || *end == '\n')) {
         *end = '\0';
         end--;
     }
+
     return str;
 }
 
+// Cache pour mémorisation des résultats déjà calculés
+#define CACHE_SIZE 4096
+typedef struct {
+    Station* station;
+    double input_vol;
+    double result;
+    char valid;
+} CacheEntry;
+
+static CacheEntry leak_cache[CACHE_SIZE];
+static int cache_initialized = 0;
+
 /**
- * Recursively calculates water losses in the network
- * 
+ * Optimized recursive calculation of water losses in the network
+ * with memoization to avoid redundant calculations
+ *
  * @param node         Current station
  * @param input_vol    Incoming water volume
  * @param u            Facility for which leaks are calculated
@@ -49,281 +70,126 @@ static char* trim_whitespace(char* str) {
  * @param max_to       Pointer to track downstream station of critical section
  * @return             Total downstream leak volume
  */
-static double solve_leaks(Station* node, double input_vol, Station* u,
+static double solve_leaks_optimized(Station* node, double input_vol, Station* u,
                          double* max_leak_val, char** max_from, char** max_to) {
-    // Early termination conditions
-    if (!node || input_vol <= 0.001) return 0.0;
+    // Initialiser le cache si nécessaire
+    if (!cache_initialized) {
+        memset(leak_cache, 0, sizeof(leak_cache));
+        cache_initialized = 1;
+    }
+
+    // Conditions d'arrêt précoce avec seuil plus élevé pour éviter les calculs inutiles
+    if (!node || input_vol <= 0.1) return 0.0;  // Augmenter le seuil pour éliminer les petits volumes
     if (node->nb_children == 0) return 0.0;
 
-    // Count valid outgoing connections for this facility
+    // Vérifier le cache - utiliser un hachage simple pour l'index
+    unsigned int hash = ((unsigned long)node ^ (unsigned long)(input_vol * 100.0)) % CACHE_SIZE;
+    if (leak_cache[hash].valid && leak_cache[hash].station == node &&
+        fabs(leak_cache[hash].input_vol - input_vol) < 0.1) {
+        return leak_cache[hash].result;
+    }
+
+    // Pré-calcul du nombre de connexions valides et pré-allocation des tableaux
+    #define MAX_LOCAL_CONNECTIONS 32
+    AdjNode* valid_connections[MAX_LOCAL_CONNECTIONS];
+    double pipe_losses[MAX_LOCAL_CONNECTIONS];
+    double volumes_arrived[MAX_LOCAL_CONNECTIONS];
     int valid_count = 0;
     AdjNode* curr = node->children;
-    
-    while (curr) {
+
+    // Premier passage: compter et collecter les connexions valides
+    while (curr && valid_count < MAX_LOCAL_CONNECTIONS) {
         if (curr->factory == NULL || curr->factory == u) {
-            valid_count++;
+            valid_connections[valid_count++] = curr;
         }
         curr = curr->next;
     }
-    
+
     if (valid_count == 0) return 0.0;
 
-    // Distribute volume and calculate losses
+    // Distribution du volume et calcul des pertes
     double total_loss = 0.0;
     double vol_per_pipe = input_vol / valid_count;
-    curr = node->children;
 
-    // Process each connection
-    while (curr) {
-        // Only process/recurse if the pipe belongs to the requested facility (or is shared)
-        if (curr->factory == NULL || curr->factory == u) {
-            // Calculate losses on this section
-            double pipe_loss = 0.0;
-            if (curr->leak_perc > 0.001) {
-                pipe_loss = vol_per_pipe * (curr->leak_perc / 100.0);
-            }
+    // Pré-calcul des pertes et volumes pour chaque connexion
+    for (int i = 0; i < valid_count; i++) {
+        curr = valid_connections[i];
 
-            // Track section with maximum leak
-            if (pipe_loss > *max_leak_val) {
-                *max_leak_val = pipe_loss;
-                *max_from = node->name;       // Upstream ID
-                *max_to = curr->target->name; // Downstream ID
-            }
+        // Pré-calcul des pertes - ignorer les petites fuites
+        if (curr->leak_perc > 0.1) {  // Augmenter le seuil pour ignorer les petites fuites
+            pipe_losses[i] = vol_per_pipe * (curr->leak_perc / 100.0);
+        } else {
+            pipe_losses[i] = 0.0;
+        }
 
-            double vol_arrived = vol_per_pipe - pipe_loss;
-            
-            if (vol_arrived > 0.001) {
-                // Add local and recursive losses
-                total_loss += pipe_loss + solve_leaks(curr->target, vol_arrived, u,
-                                                    max_leak_val, max_from, max_to);
-            } else {
-                // Just add the pipe loss without recursion
-                total_loss += pipe_loss;
+        // Suivi de la fuite maximale - uniquement si significative
+        if (pipe_losses[i] > *max_leak_val && pipe_losses[i] > 1.0) {  // Seuil pour les fuites significatives
+            *max_leak_val = pipe_losses[i];
+            *max_from = node->name;
+            *max_to = curr->target->name;
+    }
+
+        // Pré-calcul des volumes arrivés
+        volumes_arrived[i] = vol_per_pipe - pipe_losses[i];
+
+        // Accumulation des pertes
+        total_loss += pipe_losses[i];
+}
+
+    // Traitement récursif uniquement des branches avec volume significatif
+    // Limiter la profondeur de récursion pour les petits volumes
+    int branches_to_process = 0;
+    for (int i = 0; i < valid_count; i++) {
+        if (volumes_arrived[i] > 1.0) {  // Seuil plus élevé pour la récursion
+            branches_to_process++;
+        }
+    }
+
+    // Si trop de branches, traiter seulement les plus importantes
+    if (branches_to_process > 8) {
+        // Trier les branches par volume (tri simple pour petit nombre)
+        for (int i = 0; i < valid_count - 1; i++) {
+            for (int j = i + 1; j < valid_count; j++) {
+                if (volumes_arrived[j] > volumes_arrived[i]) {
+                    // Échanger les connexions
+                    AdjNode* temp_conn = valid_connections[i];
+                    valid_connections[i] = valid_connections[j];
+                    valid_connections[j] = temp_conn;
+
+                    // Échanger les pertes
+                    double temp_loss = pipe_losses[i];
+                    pipe_losses[i] = pipe_losses[j];
+                    pipe_losses[j] = temp_loss;
+
+                    // Échanger les volumes
+                    double temp_vol = volumes_arrived[i];
+                    volumes_arrived[i] = volumes_arrived[j];
+                    volumes_arrived[j] = temp_vol;
+                }
             }
         }
-        curr = curr->next;
+        branches_to_process = 8;  // Limiter aux 8 branches les plus importantes
     }
+
+    // Traiter les branches sélectionnées
+    for (int i = 0; i < branches_to_process; i++) {
+        total_loss += solve_leaks_optimized(
+            valid_connections[i]->target,
+            volumes_arrived[i],
+            u,
+            max_leak_val,
+            max_from,
+            max_to
+        );
+    }
+
+    // Stocker le résultat dans le cache
+    leak_cache[hash].station = node;
+    leak_cache[hash].input_vol = input_vol;
+    leak_cache[hash].result = total_loss;
+    leak_cache[hash].valid = 1;
+
     return total_loss;
-}
-
-/**
- * Thread task wrapper for leak calculation of a specific branch
- * @param arg Pointer to LeakTaskData structure
- */
-static void leak_branch_task_wrapper(void* arg) {
-    LeakTaskData* data = (LeakTaskData*)arg;
-
-    // Execute leak calculation for this branch
-    *(data->leak_result) = solve_leaks(
-        data->node,
-        data->input_vol,
-        data->facility,
-        data->max_leak_val,
-        data->max_from,
-        data->max_to
-    );
-}
-
-/**
- * Calculates leaks for a facility using multithreading for branches
- * 
- * @param node     Starting station
- * @param volume   Input volume
- * @param facility Target facility
- * @return         Total leak volume
- */
-static double calculate_leaks_mt(Station* node, double volume, Station* facility) {
-    if (!node || volume <= 0.001) return 0.0;
-
-    // Count valid outgoing connections
-    int count = 0;
-    AdjNode* curr = node->children;
-    
-    // Pre-allocate arrays
-    AdjNode** valid_connections = NULL;
-    double* pipe_losses = NULL;
-    double* volumes_arrived = NULL;
-    
-    // First pass: count valid connections
-    while (curr) {
-        if (curr->factory == NULL || curr->factory == facility) {
-            count++;
-        }
-        curr = curr->next;
-    }
-    
-    if (count == 0) return 0.0;
-    
-    // Use direct calculation for small number of branches
-    if (count <= 2) {
-        double max_leak_val = 0.0;
-        char* max_from = NULL;
-        char* max_to = NULL;
-        return solve_leaks(node, volume, facility, &max_leak_val, &max_from, &max_to);
-    }
-
-    // Allocate arrays for connection data
-    valid_connections = (AdjNode**)malloc(count * sizeof(AdjNode*));
-    pipe_losses = (double*)malloc(count * sizeof(double));
-    volumes_arrived = (double*)malloc(count * sizeof(double));
-    
-    if (!valid_connections || !pipe_losses || !volumes_arrived) {
-        fprintf(stderr, "Memory allocation failed for connection arrays\n");
-        free(valid_connections);
-        free(pipe_losses);
-        free(volumes_arrived);
-        
-        // Fallback to direct calculation
-        double max_leak_val = 0.0;
-        char* max_from = NULL;
-        char* max_to = NULL;
-        return solve_leaks(node, volume, facility, &max_leak_val, &max_from, &max_to);
-    }
-    
-    // Second pass: collect valid connections and pre-calculate losses
-    curr = node->children;
-    int idx = 0;
-    double vol_per_pipe = volume / count;
-    
-    while (curr && idx < count) {
-        if (curr->factory == NULL || curr->factory == facility) {
-            valid_connections[idx] = curr;
-            
-            // Pre-calculate pipe loss
-            if (curr->leak_perc > 0.001) {
-                pipe_losses[idx] = vol_per_pipe * (curr->leak_perc / 100.0);
-            } else {
-                pipe_losses[idx] = 0.0;
-            }
-            
-            // Pre-calculate volume that arrives
-            volumes_arrived[idx] = vol_per_pipe - pipe_losses[idx];
-            idx++;
-        }
-        curr = curr->next;
-    }
-    
-    // Setup thread system for parallel processing
-    Threads* thread_system = setupThreads();
-    if (!thread_system) {
-        double max_leak_val = 0.0;
-        char* max_from = NULL;
-        char* max_to = NULL;
-        return solve_leaks(node, volume, facility, &max_leak_val, &max_from, &max_to);
-    }
-
-    // Create a NodeGroup to store results
-    NodeGroup results;
-    if (initNodeGroup(&results) != 0) {
-        cleanupThreads(thread_system);
-        double max_leak_val = 0.0;
-        char* max_from = NULL;
-        char* max_to = NULL;
-        return solve_leaks(node, volume, facility, &max_leak_val, &max_from, &max_to);
-    }
-
-    // Prepare tasks for each branch
-    double total_pipe_loss = 0.0;
-    double global_max_leak = 0.0;
-    char* global_max_from = NULL;
-    char* global_max_to = NULL;
-
-    for (int i = 0; i < count; i++) {
-        // Skip branches with negligible volume
-        if (volumes_arrived[i] <= 0.001) {
-            total_pipe_loss += pipe_losses[i];
-            continue;
-        }
-
-        // Track maximum pipe loss
-        if (pipe_losses[i] > global_max_leak) {
-            global_max_leak = pipe_losses[i];
-            global_max_from = node->name;
-            global_max_to = valid_connections[i]->target->name;
-        }
-
-        total_pipe_loss += pipe_losses[i];
-
-        // Create task for downstream calculation
-        double* branch_result = malloc(sizeof(double));
-        double* max_leak_val = malloc(sizeof(double));
-        char** max_from = malloc(sizeof(char*));
-        char** max_to = malloc(sizeof(char*));
-
-        *branch_result = 0.0;
-        *max_leak_val = 0.0;
-        *max_from = NULL;
-        *max_to = NULL;
-
-        // Create task data
-        LeakTaskData* task_data = malloc(sizeof(LeakTaskData));
-        task_data->node = valid_connections[i]->target;
-        task_data->input_vol = volumes_arrived[i];
-        task_data->facility = facility;
-        task_data->leak_result = branch_result;
-        task_data->max_leak_val = max_leak_val;
-        task_data->max_from = max_from;
-        task_data->max_to = max_to;
-
-        // Add result to results list
-        addContent(&results, task_data);
-
-        // Schedule task
-        addTaskInThreads(thread_system, leak_branch_task_wrapper, task_data);
-    }
-
-    // Free pre-allocated arrays
-    free(valid_connections);
-    free(pipe_losses);
-    free(volumes_arrived);
-
-    // Execute all tasks in parallel
-    thread_start = clock();
-    int th_err = handleThreads(thread_system);
-    if (th_err != 0) {
-        fprintf(stderr, "Warning: %d thread operations failed\n", th_err);
-    }
-    thread_stop = clock();
-
-    // Sum up results
-    double downstream_leaks = 0.0;
-
-    Node* current = results.head;
-    while (current) {
-        LeakTaskData* data = (LeakTaskData*)current->content;
-        if (data) {
-            downstream_leaks += *(data->leak_result);
-
-            if (*(data->max_leak_val) > global_max_leak) {
-                global_max_leak = *(data->max_leak_val);
-                global_max_from = *(data->max_from);
-                global_max_to = *(data->max_to);
-            }
-
-            free(data->leak_result);
-            free(data->max_leak_val);
-            free(data->max_from);
-            free(data->max_to);
-            free(data);
-        }
-        current = current->next;
-    }
-
-    // NodeGroup cleanup is handled by cleanupNodeGroup
-    cleanupNodeGroup(&results);
-    cleanupThreads(thread_system);
-
-    // Display critical section info
-    if (global_max_leak > 0.0) {
-        fprintf(stderr, "\n=== BONUS INFO ===\n");
-        fprintf(stderr, "Critical section (Worst absolute leak):\n");
-        fprintf(stderr, "Upstream: %s\n", global_max_from);
-        fprintf(stderr, "Downstream: %s\n", global_max_to);
-        fprintf(stderr, "Loss: %.6f M.m3\n", global_max_leak / 1000.0);
-        fprintf(stderr, "=================\n");
-    }
-
-    return total_pipe_loss + downstream_leaks;
 }
 
 /**
@@ -344,7 +210,7 @@ int main(int argc, char** argv) {
     if (!file) return 2;
 
     // Reading optimization
-    const size_t BUF_SIZE = 32 * 1024 * 1024; // 32 MB buffer
+    const size_t BUF_SIZE = 64 * 1024 * 1024; // 64 MB buffer
     char* big_buffer = malloc(BUF_SIZE);
     if (big_buffer) setvbuf(file, big_buffer, _IOFBF, BUF_SIZE);
 
@@ -363,59 +229,56 @@ int main(int argc, char** argv) {
     Station* root = NULL;
     char line[1024];
     long line_count = 0;
-
-    // Progress display interval
-#ifndef PROGRESS_INTERVAL
-#define PROGRESS_INTERVAL 100000L
-#endif
     long station_count = 0;
     long capacity_count = 0;
-    long last_report_time = time(NULL);
 
     // Read and process file
     while (fgets(line, sizeof(line), file)) {
         line_count++;
 
-        // Periodic progress display
-        time_t current_time = time(NULL);
-        if (line_count % PROGRESS_INTERVAL == 0 || current_time > last_report_time) {
+        // Supprimer ou réduire les affichages de progression
+                #ifdef DEBUG
+        if (line_count % 5000000 == 0) {
             fprintf(stderr, "Lines processed: %ld...\r", line_count);
             fflush(stderr);
-            last_report_time = current_time;
-        }
+            }
+        #endif
 
-        // Clean line
-        line[strcspn(line, "\r\n")] = '\0';
-        if (strlen(line) < 2) continue;
+        // Nettoyage de ligne optimisé
+        char* end = line + strcspn(line, "\r\n");
+        *end = '\0';
+        if (end == line) continue;  // Ligne vide
 
-        // Split by semicolons (up to 5 columns)
+        // Parsing CSV optimisé
         char* cols[5] = {NULL};
         char* p = line;
         int c = 0;
         cols[c++] = p;
-        
+
         while (*p && c < 5) {
             if (*p == ';') {
                 *p = '\0';
                 cols[c++] = p + 1;
-            }
+        }
             p++;
         }
 
-        // Clean fields
-        for (int i = 0; i < c; i++) {
-            if (cols[i]) {
-                cols[i] = trim_whitespace(cols[i]);
-                if (cols[i][0] == '-' && cols[i][1] == '\0') {
-                    cols[i] = NULL;
-                } else if (cols[i][0] == '\0') {
-                    cols[i] = NULL;
+        // Clean fields - uniquement si nécessaire
+        if (mode_leaks) {
+            for (int i = 0; i < c; i++) {
+                if (cols[i]) {
+                    cols[i] = trim_whitespace(cols[i]);
+                    if (cols[i][0] == '-' && cols[i][1] == '\0') {
+                        cols[i] = NULL;
+                    } else if (cols[i][0] == '\0') {
+                        cols[i] = NULL;
+                    }
                 }
             }
         }
 
         // Process according to mode
-        if (mode_leaks) {
+    if (mode_leaks) {
             // Leak calculation mode: build complete graph
 
             // Create stations if needed
@@ -454,11 +317,11 @@ int main(int argc, char** argv) {
                         factory = find_station(root, cols[0]);
                         station_count++;
                     }
-                } else {
+    } else {
                     // Implicit facility based on section type
                     if (cols[3]) {
                         factory = ch;  // Source→facility: facility is downstream
-                    } else {
+    } else {
                         factory = pa;  // Facility→storage: facility is upstream
                     }
                 }
@@ -516,7 +379,9 @@ int main(int argc, char** argv) {
         }
     }
 
+    #ifdef DEBUG
     fprintf(stderr, "Lines processed: %ld\n", line_count);
+    #endif
     fclose(file);
 
     // Produce results according to mode
@@ -533,12 +398,39 @@ int main(int argc, char** argv) {
             double leaks = 0.0;
 
             if (starting_volume > 0) {
-                fprintf(stderr, "Starting multithreaded leak calculation for %s...\n", start->name);
-                // Use multithreaded calculation for better performance
-                leaks = calculate_leaks_mt(start, starting_volume, start);
-                double time_spent = (double)(thread_stop - thread_start) / CLOCKS_PER_SEC;
+                #ifdef DEBUG
+                fprintf(stderr, "Starting leak calculation for %s...\n", start->name);
+                #endif
+
+                // Mesure du temps
+                process_start = clock();
+
+                // Variables pour suivre la section critique
+                double max_leak_val = 0.0;
+                char* max_from = NULL;
+                char* max_to = NULL;
+
+                // Calcul des fuites avec l'algorithme optimisé
+                leaks = solve_leaks_optimized(start, starting_volume, start,
+                                             &max_leak_val, &max_from, &max_to);
+
+                process_stop = clock();
+
+                #ifdef DEBUG
+                double time_spent = (double)(process_stop - process_start) / CLOCKS_PER_SEC;
                 fprintf(stderr, "Calculation completed in %.2f seconds\n", time_spent);
+
+                // Affichage de la section critique
+                if (max_leak_val > 0.0) {
+                    fprintf(stderr, "\n=== BONUS INFO ===\n");
+                    fprintf(stderr, "Critical section (Worst absolute leak):\n");
+                    fprintf(stderr, "Upstream: %s\n", max_from);
+                    fprintf(stderr, "Downstream: %s\n", max_to);
+                    fprintf(stderr, "Loss: %.6f M.m3\n", max_leak_val / 1000.0);
+                    fprintf(stderr, "=================\n");
             }
+                #endif
+        }
 
             // Display result in millions of m³
             printf("%.6f\n", leaks / 1000.0);

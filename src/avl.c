@@ -8,6 +8,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#include <string.h>  // Pour _stricmp sur Windows
+#else
+#include <strings.h>  // Pour strcasecmp sur Unix/Linux
+#endif
 #include "avl.h"
 
 // -----------------------------------------------------------------------------
@@ -22,9 +27,13 @@
  */
 static char* my_strdup(const char* s) {
     if (!s) return NULL;
-    size_t len = strlen(s) + 1;
-    char* new = malloc(len);
-    if (new) memcpy(new, s, len);
+    size_t len = strlen(s);
+    char* new = malloc(len + 1);
+    if (new) {
+        // Utiliser memcpy au lieu de strcpy pour les performances
+        memcpy(new, s, len);
+        new[len] = '\0';
+    }
     return new;
 }
 
@@ -49,6 +58,18 @@ static int get_balance(Station* n) {
     return n ? get_height(n->left) - get_height(n->right) : 0;
 }
 
+// Utiliser un pool d'allocation pour les nœuds de station
+#define STATION_POOL_SIZE 1024
+static Station* station_pool = NULL;
+static int station_pool_index = 0;
+
+// Supprimer ou commenter la fonction init_station_pool si elle n'est pas utilisée
+/*
+static void init_station_pool() {
+    station_pool = (Station*)malloc(STATION_POOL_SIZE * sizeof(Station));
+    station_pool_index = 0;
+}
+*/
 /**
  * Creates a new initialized station node
  *
@@ -56,11 +77,19 @@ static int get_balance(Station* n) {
  * @return      Newly allocated station
  */
 static Station* create_node(char* name) {
-    Station* node = (Station*)malloc(sizeof(Station));
+    // Utiliser le pool d'allocation si possible
+    Station* node;
+    if (station_pool && station_pool_index < STATION_POOL_SIZE) {
+        node = &station_pool[station_pool_index++];
+    } else {
+        node = (Station*)malloc(sizeof(Station));
+    }
+
     if (!node) {
         fprintf(stderr, "Error: unable to allocate a new station\n");
         exit(EXIT_FAILURE);
     }
+
     node->name = my_strdup(name);
     node->capacity = 0;
     node->consumption = 0;
@@ -70,8 +99,8 @@ static Station* create_node(char* name) {
     node->right = NULL;
     node->children = NULL;
     node->nb_children = 0;
-    return node;
-}
+        return node;
+    }
 
 /**
  * Performs a right rotation to rebalance the AVL tree
@@ -88,7 +117,6 @@ static Station* right_rotate(Station* y) {
     x->height = max_int(get_height(x->left), get_height(x->right)) + 1;
     return x;
 }
-
 /**
  * Performs a left rotation to rebalance the AVL tree
  *
@@ -105,10 +133,21 @@ static Station* left_rotate(Station* x) {
     return y;
 }
 
+/**
+ * Case-insensitive string comparison
+ * Works on both Windows and Unix/Linux
+ */
+static int case_insensitive_compare(const char* s1, const char* s2) {
+    #ifdef _WIN32
+        return _stricmp(s1, s2);
+    #else
+        return strcasecmp(s1, s2);
+    #endif
+}
+
 // -----------------------------------------------------------------------------
 // Public functions
 // -----------------------------------------------------------------------------
-
 /**
  * Searches for a station by name in the AVL tree
  *
@@ -118,12 +157,14 @@ static Station* left_rotate(Station* x) {
  */
 Station* find_station(Station* node, char* name) {
     if (!node) return NULL;
-    int cmp = strcmp(name, node->name);
+
+    // Utiliser une comparaison insensible à la casse
+    int cmp = case_insensitive_compare(name, node->name);
+
     if (cmp == 0) return node;
     if (cmp < 0) return find_station(node->left, name);
     return find_station(node->right, name);
 }
-
 /**
  * Adds a connection between two stations
  *
@@ -178,8 +219,9 @@ Station* insert_station(Station* node, char* name, long cap, long cons, long rea
         return n;
     }
 
-    // Recursive search for insertion position
-    int cmp = strcmp(name, node->name);
+    // Recursive search for insertion position using case-insensitive comparison
+    int cmp = case_insensitive_compare(name, node->name);
+
     if (cmp < 0) {
         node->left = insert_station(node->left, name, cap, cons, real);
     } else if (cmp > 0) {
@@ -199,17 +241,17 @@ Station* insert_station(Station* node, char* name, long cap, long cons, long rea
     int balance = get_balance(node);
 
     // Four possible imbalance cases
-    if (balance > 1 && strcmp(name, node->left->name) < 0) {
+    if (balance > 1 && case_insensitive_compare(name, node->left->name) < 0) {
         return right_rotate(node);  // Left-Left case
     }
-    if (balance < -1 && strcmp(name, node->right->name) > 0) {
+    if (balance < -1 && case_insensitive_compare(name, node->right->name) > 0) {
         return left_rotate(node);   // Right-Right case
     }
-    if (balance > 1 && strcmp(name, node->left->name) > 0) {
+    if (balance > 1 && case_insensitive_compare(name, node->left->name) > 0) {
         node->left = left_rotate(node->left);  // Left-Right case
         return right_rotate(node);
     }
-    if (balance < -1 && strcmp(name, node->right->name) < 0) {
+    if (balance < -1 && case_insensitive_compare(name, node->right->name) < 0) {
         node->right = right_rotate(node->right);  // Right-Left case
         return left_rotate(node);
     }
@@ -253,7 +295,6 @@ void write_csv(Station* node, FILE* output, char* mode) {
 
     // Inorder traversal (left-root-right)
     write_csv(node->left, output, mode);
-
     if (strcmp(mode, "all") == 0) {
         // Mode "all": display all three values on the same line
         double max_val = node->capacity/1000.0;
