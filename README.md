@@ -75,10 +75,10 @@ Everything is controlled by our master script `myScript.sh`. It handles compilat
         ```
     *   *Detect leaks:*
         ```bash
-        ./myScript.sh leaks "Facility complex #ID"
+        ./myScript.sh leaks "Factory complex/Resurgence/Intake/Source/Well/Spring/Plant/Unit #ID"
         ```
 
-The generated charts (`.png` files) will be saved in the root folder or a dedicated folder (`images/`) depending on the script configuration.
+The generated charts (`.png` files) will be saved in the dedicated folder (`data/output_images/`).
 
 ## ⚙️ Technical Choices
 
