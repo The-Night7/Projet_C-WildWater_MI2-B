@@ -2,11 +2,11 @@
 
 # Compiler configuration
 CC      = gcc
-CFLAGS  = -Wall -O3 -march=native -flto -ffast-math -Wextra -std=c99 -pthread
+CFLAGS  = -Wall -Wextra -std=c99 -O2 -march=native -pthread
 LDFLAGS = -lm -pthread
 
 # Source files
-SRCS    = main.c avl.c
+SRCS    = main.c avl.c multiThreaded.c
 OBJS    = $(addprefix bin/,$(SRCS:.c=.o))
 
 # Main executable

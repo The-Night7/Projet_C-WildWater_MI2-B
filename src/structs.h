@@ -1,5 +1,5 @@
 /*
-* Data structures for the C-WildWater project
+ * Data structures for the C-WildWater project
  *
  * Defines structures to represent the hydraulic network
  * as both an AVL tree and a directed graph.
@@ -40,5 +40,19 @@ typedef struct Station {
     AdjNode* children;    // List of outgoing connections
     int nb_children;      // Number of outgoing connections
 } Station;
+
+/**
+ * Structure for parallel leak calculation tasks
+ * Used to pass data to threads for distributed processing
+ */
+typedef struct {
+    Station* node;            // Station to process
+    double input_vol;         // Input volume
+    Station* facility;        // Target facility
+    double* leak_result;      // Pointer to store result
+    double* max_leak_val;     // Pointer to track maximum leak
+    char** max_from;          // Pointer to track upstream station of critical section
+    char** max_to;            // Pointer to track downstream station of critical section
+} LeakTaskData;
 
 #endif /* STRUCTS_H */

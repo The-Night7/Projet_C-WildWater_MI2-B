@@ -30,15 +30,6 @@ LOG_FILE="$DATA_DIR/processing.log"
 DEFAULT_INPUT="$DATA_DIR/c-wildwater_v3.dat"
 CACHE_DIR="$DATA_DIR/.cache"
 
-# Use RAM for temporary files if possible
-if [ -d "/dev/shm" ] && [ -w "/dev/shm" ]; then
-    TEMP_DIR="/dev/shm/c-wildwater-$$"
-    mkdir -p "$TEMP_DIR"
-    trap 'rm -rf "$TEMP_DIR"' EXIT
-else
-    TEMP_DIR="$CACHE_DIR"
-fi
-
 # Create necessary directories
 mkdir -p "$GRAPH_DIR" "$DATA_DIR" "$BIN_DIR" "$CACHE_DIR"
 
@@ -225,44 +216,43 @@ case "$COMMAND" in
         # Handle "all" mode (combined histogram) or standard modes
         if [ "$PARAM" = "all" ]; then
             # Combined Histogram (Capacity / Source / Real)
-            # Start timer for "all" mode
-            ALL_START=$(date +%s%3N)
-
-            # Temporary files in RAM if possible
-            TMP_MAX="$TEMP_DIR/.tmp_max"
-            TMP_SRC="$TEMP_DIR/.tmp_src"
-            TMP_REAL="$TEMP_DIR/.tmp_real"
-            TMP_MERGED="$TEMP_DIR/.tmp_merged"
-            TMP_SORTED="$TEMP_DIR/.tmp_sorted"
+            # Temporary files
+            TMP_MAX="$CACHE_DIR/.tmp_max"
+            TMP_SRC="$CACHE_DIR/.tmp_src"
+            TMP_REAL="$CACHE_DIR/.tmp_real"
+            TMP_MERGED="$CACHE_DIR/.tmp_merged"
+            TMP_SORTED="$CACHE_DIR/.tmp_sorted"
 
             echo -e "${YELLOW}Generating combined data...${RESET}"
 
-            # Generate the 3 files in parallel for better performance
-            "$EXEC_MAIN" "$DATAFILE" "max" > "$TMP_MAX" &
-            PID1=$!
-            "$EXEC_MAIN" "$DATAFILE" "src" > "$TMP_SRC" &
-            PID2=$!
-            "$EXEC_MAIN" "$DATAFILE" "real" > "$TMP_REAL" &
-            PID3=$!
+            # Generate the 3 files separately
+            "$EXEC_MAIN" "$DATAFILE" "max"  > "$TMP_MAX"
+            "$EXEC_MAIN" "$DATAFILE" "src"  > "$TMP_SRC"
+            "$EXEC_MAIN" "$DATAFILE" "real" > "$TMP_REAL"
 
-            # Wait for all processes to complete
-            wait $PID1 $PID2 $PID3
+            # Merge into: ID;Max;Source;Real
+            # Join files on ID. Missing values default to 0.
+            awk -F';' '
+                FNR==1 { file_idx++ }
+                file_idx==1 { max[$1] = $2; next }
+                file_idx==2 { src[$1] = $2; next }
+                file_idx==3 { real[$1] = $2; next }
+                END {
+                    OFS=";"
+                    for (id in max) {
+                        m = max[id] + 0
+                        s = (id in src) ? src[id] + 0 : 0
+                        r = (id in real) ? real[id] + 0 : 0
+                        if (m > 0) print id, m, s, r
+                    }
+                }
+            ' "$TMP_MAX" "$TMP_SRC" "$TMP_REAL" > "$TMP_MERGED"
 
-            # Optimized merge using join instead of awk for better performance
-            # First, sort all files by ID for efficient joining
-            LC_ALL=C sort -t';' -k1,1 "$TMP_MAX" > "$TMP_MAX.sorted"
-            LC_ALL=C sort -t';' -k1,1 "$TMP_SRC" > "$TMP_SRC.sorted"
-            LC_ALL=C sort -t';' -k1,1 "$TMP_REAL" > "$TMP_REAL.sorted"
+            # Sort on capacity (column 2)
+            sort -t';' -k2,2g "$TMP_MERGED" > "$TMP_SORTED"
 
-            # Join files efficiently
-            LC_ALL=C join -t';' -a1 -e0 -o 1.1,1.2,2.2 "$TMP_MAX.sorted" "$TMP_SRC.sorted" > "$TMP_MERGED.tmp"
-            LC_ALL=C join -t';' -a1 -e0 -o 1.1,1.2,1.3,2.2 "$TMP_MERGED.tmp" "$TMP_REAL.sorted" > "$TMP_MERGED"
-
-            # Sort on capacity (column 2) using LC_ALL=C for faster sorting
-            LC_ALL=C sort -t';' -k2,2g "$TMP_MERGED" > "$TMP_SORTED"
-
-            # Cleanup intermediate files to save memory
-            rm -f "$TMP_MAX" "$TMP_SRC" "$TMP_REAL" "$TMP_MERGED" "$TMP_MAX.sorted" "$TMP_SRC.sorted" "$TMP_REAL.sorted" "$TMP_MERGED.tmp"
+            # Cleanup intermediate files
+            rm -f "$TMP_MAX" "$TMP_SRC" "$TMP_REAL" "$TMP_MERGED"
 
             if [ ! -s "$TMP_SORTED" ]; then
                 log_error "Error generating combined data."
@@ -271,15 +261,13 @@ case "$COMMAND" in
 
             # Generate Top 10 (biggest) graph
             IMG_BIG="$GRAPH_DIR/vol_all_big.png"
-            GP_DATA_BIG="$TEMP_DIR/data_all_big.dat"
-
-            # Use tail with direct output redirection for efficiency
+            GP_DATA_BIG="$DATA_DIR/data_all_big.dat"
+            
             tail -n 10 "$TMP_SORTED" > "$GP_DATA_BIG"
 
             echo -e "${YELLOW}Generating Top 10 graph (Stacked)...${RESET}"
 
-            # Use here-document with direct input to gnuplot for better performance
-            gnuplot <<EOF
+            gnuplot -persist <<EOF
 set terminal png size 1200,800
 set output '$IMG_BIG'
 set title "Top 10 Stations - Bonus Mode (Smallest to Largest)"
@@ -304,14 +292,13 @@ EOF
 
             # Generate Bottom 50 (smallest) graph
             IMG_SMALL="$GRAPH_DIR/vol_all_small.png"
-            GP_DATA_SMALL="$TEMP_DIR/data_all_small.dat"
-
+            GP_DATA_SMALL="$DATA_DIR/data_all_small.dat"
+            
             head -n 50 "$TMP_SORTED" > "$GP_DATA_SMALL"
 
             echo -e "${YELLOW}Generating Bottom 50 graph (Stacked)...${RESET}"
 
-            # Use here-document with direct input to gnuplot
-            gnuplot <<EOF
+            gnuplot -persist <<EOF
 set terminal png size 1600,900
 set output '$IMG_SMALL'
 set title "Bottom 50 Stations - Bonus Mode (Smallest to Largest)"
@@ -336,15 +323,10 @@ EOF
             # Final cleanup
             rm -f "$TMP_SORTED" "$GP_DATA_BIG" "$GP_DATA_SMALL"
 
-            # End timer for "all" mode
-            ALL_END=$(date +%s%3N)
-            ALL_DURATION=$((ALL_END - ALL_START))
-            log_success "All mode histograms generated in ${BOLD}${ALL_DURATION} ms${RESET}"
-
         else
             # Standard modes (max, src, real)
             echo -e "${YELLOW}Creating histograms...${RESET}"
-
+            
             # Sort in ascending order (Small -> Big)
             SORTED_STD="$DATA_DIR/.sorted_std_asc"
             sort -t';' -k2,2g "$OUT_CSV" > "$SORTED_STD"
@@ -492,7 +474,7 @@ EOF
                 echo "$FACTORY;$VAL" >> "$LEAK_FILE"
                 echo "$FACTORY;$VAL" >> "$CACHE_FILE"
                 echo -e "${BOLD}Leak volume for $FACTORY:${RESET} ${BLUE}${VAL} M.m3${RESET}"
-
+                
                 # Display critical section information if available
                 if [ -f "$TEMP_ERR_FILE" ]; then
                     if grep -q "BONUS INFO" "$TEMP_ERR_FILE"; then
