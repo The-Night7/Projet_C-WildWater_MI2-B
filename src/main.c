@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <math.h>
 #include <time.h>
 #include <immintrin.h>  // Pour les instructions SIMD
 #include "avl.h"
@@ -41,8 +42,21 @@ static char* trim_whitespace(char* str) {
     return str;
 }
 
+// Cache pour mémorisation des résultats déjà calculés
+#define CACHE_SIZE 4096
+typedef struct {
+    Station* station;
+    double input_vol;
+    double result;
+    char valid;
+} CacheEntry;
+
+static CacheEntry leak_cache[CACHE_SIZE];
+static int cache_initialized = 0;
+
 /**
  * Optimized recursive calculation of water losses in the network
+ * with memoization to avoid redundant calculations
  *
  * @param node         Current station
  * @param input_vol    Incoming water volume
@@ -54,19 +68,31 @@ static char* trim_whitespace(char* str) {
  */
 static double solve_leaks_optimized(Station* node, double input_vol, Station* u,
                          double* max_leak_val, char** max_from, char** max_to) {
+    // Initialiser le cache si nécessaire
+    if (!cache_initialized) {
+        memset(leak_cache, 0, sizeof(leak_cache));
+        cache_initialized = 1;
+    }
+
     // Conditions d'arrêt précoce avec seuil plus élevé pour éviter les calculs inutiles
-    if (!node || input_vol <= 0.01) return 0.0;
+    if (!node || input_vol <= 0.1) return 0.0;  // Augmenter le seuil pour éliminer les petits volumes
     if (node->nb_children == 0) return 0.0;
+
+    // Vérifier le cache - utiliser un hachage simple pour l'index
+    unsigned int hash = ((unsigned long)node ^ (unsigned long)(input_vol * 100.0)) % CACHE_SIZE;
+    if (leak_cache[hash].valid && leak_cache[hash].station == node &&
+        fabs(leak_cache[hash].input_vol - input_vol) < 0.1) {
+        return leak_cache[hash].result;
+    }
 
     // Pré-calcul du nombre de connexions valides et pré-allocation des tableaux
     #define MAX_LOCAL_CONNECTIONS 32
     AdjNode* valid_connections[MAX_LOCAL_CONNECTIONS];
     double pipe_losses[MAX_LOCAL_CONNECTIONS];
     double volumes_arrived[MAX_LOCAL_CONNECTIONS];
-
     int valid_count = 0;
     AdjNode* curr = node->children;
-    
+
     // Premier passage: compter et collecter les connexions valides
     while (curr && valid_count < MAX_LOCAL_CONNECTIONS) {
         if (curr->factory == NULL || curr->factory == u) {
@@ -74,7 +100,7 @@ static double solve_leaks_optimized(Station* node, double input_vol, Station* u,
         }
         curr = curr->next;
     }
-    
+
     if (valid_count == 0) return 0.0;
 
     // Distribution du volume et calcul des pertes
@@ -85,43 +111,83 @@ static double solve_leaks_optimized(Station* node, double input_vol, Station* u,
     for (int i = 0; i < valid_count; i++) {
         curr = valid_connections[i];
 
-        // Pré-calcul des pertes
-        if (curr->leak_perc > 0.01) {
+        // Pré-calcul des pertes - ignorer les petites fuites
+        if (curr->leak_perc > 0.1) {  // Augmenter le seuil pour ignorer les petites fuites
             pipe_losses[i] = vol_per_pipe * (curr->leak_perc / 100.0);
-            } else {
+        } else {
             pipe_losses[i] = 0.0;
-            }
-            
-        // Suivi de la fuite maximale
-        if (pipe_losses[i] > *max_leak_val) {
+        }
+
+        // Suivi de la fuite maximale - uniquement si significative
+        if (pipe_losses[i] > *max_leak_val && pipe_losses[i] > 1.0) {  // Seuil pour les fuites significatives
             *max_leak_val = pipe_losses[i];
             *max_from = node->name;
             *max_to = curr->target->name;
-        }
+    }
 
         // Pré-calcul des volumes arrivés
         volumes_arrived[i] = vol_per_pipe - pipe_losses[i];
 
         // Accumulation des pertes
         total_loss += pipe_losses[i];
-    }
-    
-    // Traitement récursif des branches avec volume significatif
+}
+
+    // Traitement récursif uniquement des branches avec volume significatif
+    // Limiter la profondeur de récursion pour les petits volumes
+    int branches_to_process = 0;
     for (int i = 0; i < valid_count; i++) {
-        if (volumes_arrived[i] > 0.01) {
-            total_loss += solve_leaks_optimized(
-                valid_connections[i]->target,
-                volumes_arrived[i],
-                u,
-                max_leak_val,
-                max_from,
-                max_to
-            );
+        if (volumes_arrived[i] > 1.0) {  // Seuil plus élevé pour la récursion
+            branches_to_process++;
         }
     }
 
+    // Si trop de branches, traiter seulement les plus importantes
+    if (branches_to_process > 8) {
+        // Trier les branches par volume (tri simple pour petit nombre)
+        for (int i = 0; i < valid_count - 1; i++) {
+            for (int j = i + 1; j < valid_count; j++) {
+                if (volumes_arrived[j] > volumes_arrived[i]) {
+                    // Échanger les connexions
+                    AdjNode* temp_conn = valid_connections[i];
+                    valid_connections[i] = valid_connections[j];
+                    valid_connections[j] = temp_conn;
+
+                    // Échanger les pertes
+                    double temp_loss = pipe_losses[i];
+                    pipe_losses[i] = pipe_losses[j];
+                    pipe_losses[j] = temp_loss;
+
+                    // Échanger les volumes
+                    double temp_vol = volumes_arrived[i];
+                    volumes_arrived[i] = volumes_arrived[j];
+                    volumes_arrived[j] = temp_vol;
+                }
+            }
+        }
+        branches_to_process = 8;  // Limiter aux 8 branches les plus importantes
+    }
+
+    // Traiter les branches sélectionnées
+    for (int i = 0; i < branches_to_process; i++) {
+        total_loss += solve_leaks_optimized(
+            valid_connections[i]->target,
+            volumes_arrived[i],
+            u,
+            max_leak_val,
+            max_from,
+            max_to
+        );
+    }
+
+    // Stocker le résultat dans le cache
+    leak_cache[hash].station = node;
+    leak_cache[hash].input_vol = input_vol;
+    leak_cache[hash].result = total_loss;
+    leak_cache[hash].valid = 1;
+
     return total_loss;
 }
+
 /**
  * Program entry point
  *
