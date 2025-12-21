@@ -22,9 +22,13 @@
  */
 static char* my_strdup(const char* s) {
     if (!s) return NULL;
-    size_t len = strlen(s) + 1;
-    char* new = malloc(len);
-    if (new) memcpy(new, s, len);
+    size_t len = strlen(s);
+    char* new = malloc(len + 1);
+    if (new) {
+        // Utiliser memcpy au lieu de strcpy pour les performances
+        memcpy(new, s, len);
+        new[len] = '\0';
+    }
     return new;
 }
 
@@ -49,6 +53,18 @@ static int get_balance(Station* n) {
     return n ? get_height(n->left) - get_height(n->right) : 0;
 }
 
+// Utiliser un pool d'allocation pour les nœuds de station
+#define STATION_POOL_SIZE 1024
+static Station* station_pool = NULL;
+static int station_pool_index = 0;
+
+// Supprimer ou commenter la fonction init_station_pool si elle n'est pas utilisée
+/*
+static void init_station_pool() {
+    station_pool = (Station*)malloc(STATION_POOL_SIZE * sizeof(Station));
+    station_pool_index = 0;
+}
+*/
 /**
  * Creates a new initialized station node
  *
@@ -56,11 +72,19 @@ static int get_balance(Station* n) {
  * @return      Newly allocated station
  */
 static Station* create_node(char* name) {
-    Station* node = (Station*)malloc(sizeof(Station));
+    // Utiliser le pool d'allocation si possible
+    Station* node;
+    if (station_pool && station_pool_index < STATION_POOL_SIZE) {
+        node = &station_pool[station_pool_index++];
+    } else {
+        node = (Station*)malloc(sizeof(Station));
+    }
+
     if (!node) {
         fprintf(stderr, "Error: unable to allocate a new station\n");
         exit(EXIT_FAILURE);
     }
+
     node->name = my_strdup(name);
     node->capacity = 0;
     node->consumption = 0;
@@ -70,8 +94,8 @@ static Station* create_node(char* name) {
     node->right = NULL;
     node->children = NULL;
     node->nb_children = 0;
-    return node;
-}
+        return node;
+    }
 
 /**
  * Performs a right rotation to rebalance the AVL tree
@@ -88,7 +112,6 @@ static Station* right_rotate(Station* y) {
     x->height = max_int(get_height(x->left), get_height(x->right)) + 1;
     return x;
 }
-
 /**
  * Performs a left rotation to rebalance the AVL tree
  *
@@ -253,7 +276,6 @@ void write_csv(Station* node, FILE* output, char* mode) {
 
     // Inorder traversal (left-root-right)
     write_csv(node->left, output, mode);
-
     if (strcmp(mode, "all") == 0) {
         // Mode "all": display all three values on the same line
         double max_val = node->capacity/1000.0;

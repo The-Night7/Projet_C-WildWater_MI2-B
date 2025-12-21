@@ -4,9 +4,10 @@
 #include <pthread.h>
 #include <time.h>
 /**
- * Number of threads to use for parallel processing
+ * Nombre de threads à utiliser pour le traitement parallèle
+ * Augmentation pour mieux utiliser les processeurs modernes
  */
-#define maxthreads 4
+#define maxthreads 8
 
 /**
  * Global timing variables

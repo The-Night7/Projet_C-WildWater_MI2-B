@@ -2,7 +2,7 @@
 
 # Compiler configuration
 CC      = gcc
-CFLAGS  = -Wall -Wextra -std=c99 -O2 -march=native -pthread
+CFLAGS  = -Wall -O3 -march=native -flto -ffast-math -Wextra -std=c99 -pthread
 LDFLAGS = -lm -pthread
 
 # Source files
