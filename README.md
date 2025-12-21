@@ -49,13 +49,6 @@ sudo dnf install gcc make gnuplot
 
 ### Quick Start
 
-1. **Clone the repository and navigate to the scripts directory:**
-   ```bash
-   git clone https://github.com/The-Night7/Projet_C-WildWater_MI2-B.git
-   cd Projet_C-WildWater_MI2-B
-   cd scripts
-   ```
-
 Everything is controlled by our master script `myScript.sh`. It handles compilation, cleanup, and execution.
 
 1.  **Grant execution rights:**
