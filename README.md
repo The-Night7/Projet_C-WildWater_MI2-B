@@ -49,6 +49,13 @@ sudo dnf install gcc make gnuplot
 
 ### Quick Start
 
+1. **Clone the repository and navigate to the scripts directory:**
+   ```bash
+   git clone https://github.com/The-Night7/Projet_C-WildWater_MI2-B.git
+   cd Projet_C-WildWater_MI2-B
+   cd scripts
+   ```
+
 Everything is controlled by our master script `myScript.sh`. It handles compilation, cleanup, and execution.
 
 1.  **Grant execution rights:**
@@ -78,7 +85,7 @@ The generated charts (`.png` files) will be saved in the dedicated folder (`data
 To ensure execution speed on millions of lines:
 
 *   **AVL Trees:** We use balanced binary search trees to store and retrieve stations instantly (O(log n) complexity), avoiding the slowness of a classic linked list.
-*   **Optimized Sequential Processing:** Carefully designed algorithms with early termination conditions and memory-efficient data structures to handle large datasets efficiently.
+*   **Multi-threading:** Use of `pthread` and `mutex` to parallelize certain file writes and optimize processing times (IO-bound).
 *   **Robust Parsing:** Native handling of CSV irregularities (spaces, variable formats).
 
 ## 👥 The Team
@@ -86,7 +93,7 @@ To ensure execution speed on millions of lines:
 This project is the result of close collaboration where each member brought their expertise:
 
 *   **Myriam Bensaid** 🏗️
-    *   *Architecture & Optimization:* She structured the C code, developed critical utility functions, and managed the Git flow (merges) between branches. She also led the optimization of data processing and terminal display.
+    *   *Architecture & Optimization:* She structured the C code, developed critical utility functions, and managed the Git flow (merges) between branches. She also led the integration of multi-threading and terminal display.
 
 *   **Sheryne Ouarghi** 📈
     *   *Visualization & Data:* She mastered Gnuplot to transform our raw data into readable charts. She ensured visual results were relevant and professionally formatted.
@@ -96,7 +103,7 @@ This project is the result of close collaboration where each member brought thei
 
 ## 👏 Credits
 
-*   **Optimization Techniques:** Thanks to various online resources and academic papers that inspired our implementation of efficient sequential processing algorithms.
+*   **Multi-threading Inspiration:** Thanks to [Tiago Charette](https://github.com/TogExe/MultiThreaded) whose work inspired our implementation of mutex-secured parallelization.
 
 ---
 *C-WildWater Project - 2025*
